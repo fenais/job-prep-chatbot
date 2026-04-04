@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JobPrepChatbot</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'style.css' %}">
+</head>
+<body>
+    <nav>
+        <h2>JobPrepChatbot</h2>
+        <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="/chat/">Chat</a>
+            <a href="/developer/">Developer</a>
+            <a href="/admin-dashboard/">Administrator</a>
+        </div>
+    </nav>
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>
