@@ -1,19 +1,322 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
-    <h1>Chatbot</h1>
-    <form method="POST">
-        {% csrf_token %}
-        <input type="text" name="message" placeholder="Ask a question..." value="{{ user_message }}">
-        <button type="submit">Send</button>
-    </form>
+<style>
+    .jp-chat-wrap {
+        max-width: 920px;
+        margin: 40px auto;
+        padding: 0 20px;
+    }
 
-    {% if user_message %}
-        <div class="chat-box">
-            <p><strong>You:</strong> {{ user_message }}</p>
-            <p><strong>Bot:</strong> {{ response }}</p>
+    .jp-chat-card {
+        background: #ffffff;
+        border-radius: 24px;
+        box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+        overflow: hidden;
+        border: 1px solid #e5e7eb;
+    }
+
+    .jp-chat-top {
+        padding: 28px 32px 18px 32px;
+        border-bottom: 1px solid #eef2f7;
+        background: #ffffff;
+    }
+
+    .jp-chat-title {
+        margin: 0;
+        font-size: 2rem;
+        font-weight: 800;
+        color: #1f2937;
+    }
+
+    .jp-chat-subtitle {
+        margin: 8px 0 0 0;
+        font-size: 1rem;
+        color: #6b7280;
+    }
+
+    .jp-chat-body {
+        background: #f8fafc;
+        padding: 24px;
+        min-height: 460px;
+        max-height: 520px;
+        overflow-y: auto;
+    }
+
+    .jp-empty-state {
+        max-width: 620px;
+        margin: 40px auto;
+        text-align: center;
+    }
+
+    .jp-empty-icon {
+        font-size: 2rem;
+        margin-bottom: 12px;
+    }
+
+    .jp-empty-title {
+        margin: 0 0 10px 0;
+        font-size: 1.8rem;
+        font-weight: 800;
+        color: #1f2937;
+    }
+
+    .jp-empty-text {
+        margin: 0 0 22px 0;
+        color: #6b7280;
+        font-size: 1rem;
+    }
+
+    .jp-suggestion-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-top: 18px;
+    }
+
+    .jp-suggestion {
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 16px;
+        padding: 14px 16px;
+        text-align: left;
+        font-size: 0.95rem;
+        color: #374151;
+    }
+
+    .jp-message-row {
+        display: flex;
+        margin-bottom: 18px;
+    }
+
+    .jp-message-row.user {
+        justify-content: flex-end;
+    }
+
+    .jp-message-row.bot {
+        justify-content: flex-start;
+    }
+
+    .jp-message-bubble {
+        max-width: 72%;
+        padding: 14px 16px;
+        border-radius: 18px;
+        line-height: 1.5;
+        font-size: 0.98rem;
+        word-break: break-word;
+    }
+
+    .jp-message-row.user .jp-message-bubble {
+        background: #1e3a8a;
+        color: white;
+        border-bottom-right-radius: 6px;
+    }
+
+    .jp-message-row.bot .jp-message-bubble {
+        background: #ffffff;
+        color: #1f2937;
+        border: 1px solid #e5e7eb;
+        border-bottom-left-radius: 6px;
+    }
+
+    .jp-message-label {
+        font-size: 0.78rem;
+        font-weight: 700;
+        margin-bottom: 6px;
+        opacity: 0.85;
+    }
+
+    .jp-chat-bottom {
+        padding: 18px 20px 20px 20px;
+        background: #ffffff;
+        border-top: 1px solid #eef2f7;
+    }
+
+    .jp-input-row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+    }
+
+    .jp-input-row input[type="text"] {
+        flex: 1;
+        border: 1px solid #d1d5db;
+        border-radius: 14px;
+        padding: 14px 16px;
+        font-size: 1rem;
+        outline: none;
+        background: #ffffff;
+    }
+
+    .jp-input-row input[type="text"]:focus {
+        border-color: #1e3a8a;
+        box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.12);
+    }
+
+    .jp-send-btn,
+    .jp-clear-btn {
+        border: none;
+        border-radius: 14px;
+        padding: 12px 18px;
+        font-size: 0.95rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: 0.2s ease;
+    }
+
+    .jp-send-btn {
+        background: #1e3a8a;
+        color: #ffffff;
+    }
+
+    .jp-send-btn:hover {
+        background: #173074;
+    }
+
+    .jp-clear-row {
+        margin-top: 10px;
+    }
+
+    .jp-clear-btn {
+        background: #eef2ff;
+        color: #1e3a8a;
+    }
+
+    .jp-clear-btn:hover {
+        background: #e0e7ff;
+    }
+
+    @media (max-width: 768px) {
+        .jp-chat-wrap {
+            margin: 24px auto;
+            padding: 0 12px;
+        }
+
+        .jp-chat-top {
+            padding: 22px 20px 16px 20px;
+        }
+
+        .jp-chat-body {
+            padding: 16px;
+            min-height: 400px;
+        }
+
+        .jp-message-bubble {
+            max-width: 88%;
+        }
+
+        .jp-suggestion-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .jp-input-row {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .jp-send-btn {
+            width: 100%;
+        }
+    }
+</style>
+
+<div class="jp-chat-wrap">
+    <div class="jp-chat-card">
+        <div class="jp-chat-top">
+            <h1 class="jp-chat-title">JobPrepChatbot</h1>
+            <p class="jp-chat-subtitle">
+                Your job prep assistant for resumes, cover letters, interviews, and more.
+            </p>
         </div>
-    {% endif %}
+
+        <div class="jp-chat-body" id="jp-chat-body">
+            {% if chat_history %}
+                {% for chat in chat_history %}
+                    <div class="jp-message-row user">
+                        <div class="jp-message-bubble">
+                            <div class="jp-message-label">You</div>
+                            <div>{{ chat.user }}</div>
+                        </div>
+                    </div>
+
+                    <div class="jp-message-row bot">
+                        <div class="jp-message-bubble">
+                            <div class="jp-message-label">JobPrepChatbot</div>
+                            <div>{{ chat.bot }}</div>
+                        </div>
+                    </div>
+                {% endfor %}
+            {% else %}
+            <div class="jp-empty-state">
+                <div class="jp-empty-icon">💼</div>
+
+                <div class="jp-topic-tags">
+                    <span class="jp-tag">Resume Help</span>
+                    <span class="jp-tag">Cover Letters</span>
+                    <span class="jp-tag">Interview Prep</span>
+                    <span class="jp-tag">Internships</span>
+                </div>
+
+                <h2 class="jp-empty-title">Let’s get you career-ready</h2>
+                <p class="jp-empty-text">
+                    Ask anything about resumes, cover letters, interviews, internships, or general job prep.
+                </p>
+
+                <div class="jp-suggestion-grid">
+                    <button type="button" class="jp-suggestion-btn" data-question="How do I improve my resume bullets?">
+                        How do I improve my resume bullets?
+                    </button>
+
+                    <button type="button" class="jp-suggestion-btn" data-question="How do I start a cover letter?">
+                        How do I start a cover letter?
+                    </button>
+
+                    <button type="button" class="jp-suggestion-btn" data-question="How do I prepare for a technical interview?">
+                        How do I prepare for a technical interview?
+                    </button>
+
+                    <button type="button" class="jp-suggestion-btn" data-question="How do I get an internship?">
+                        How do I get an internship?
+                    </button>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="jp-chat-bottom">
+            <form method="POST">
+                {% csrf_token %}
+                <div class="jp-input-row">
+                    <input type="text" name="message" id="jp-chat-input" placeholder="Ask a question...">
+                    <button type="submit" class="jp-send-btn">Send</button>
+                </div>
+            </form>
+
+            <form method="POST" class="jp-clear-row">
+                {% csrf_token %}
+                <button type="submit" name="clear_chat" value="1" class="jp-clear-btn">Clear Chat</button>
+            </form>
+        </div>
+    </div>
 </div>
+
+<script>
+    const chatBody = document.getElementById("jp-chat-body");
+    if (chatBody) {
+        chatBody.scrollTop = chatBody.scrollHeight;
+    }
+
+    const chatInput = document.getElementById("jp-chat-input");
+    const suggestionButtons = document.querySelectorAll(".jp-suggestion-btn");
+
+    suggestionButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+            const question = button.getAttribute("data-question");
+            if (chatInput) {
+                chatInput.value = question;
+                chatInput.focus();
+            }
+        });
+    });
+</script>
 {% endblock %}
