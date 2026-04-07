@@ -242,10 +242,20 @@
                     <div class="jp-message-row bot">
                         <div class="jp-message-bubble">
                             <div class="jp-message-label">JobPrepChatbot</div>
-                            <div>{{ chat.bot }}</div>
+                            <div>{{ chat.bot|linebreaksbr }}</div>
+                            
+                            {% if chat.sources %}
+                            <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #e5e7eb;">
+                                <strong style="font-size: 0.8rem; color: #6b7280; text-transform: uppercase;">Sources Used:</strong>
+                                <ul style="margin: 4px 0 0; padding-left: 18px; font-size: 0.85rem; color: #1e3a8a;">
+                                    {% for source in chat.sources %}
+                                        <li>{{ source }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            {% endif %}
                         </div>
-                    </div>
-                {% endfor %}
+                    </div>                {% endfor %}
             {% else %}
             <div class="jp-empty-state">
                 <div class="jp-empty-icon">💼</div>
