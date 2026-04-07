@@ -1,8 +1,173 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
-    <h1>Developer View</h1>
-    <p>This section will support dataset management, ingestion, preprocessing, prompting, and testing features.</p>
+<div class="card developer-page">
+    <div class="developer-header">
+        <div>
+            <h1>Developer View</h1>
+            <p>Manage the job prep dataset and ingestion workflows that power grounded chatbot responses.</p>
+        </div>
+
+        <section class="developer-maintenance developer-maintenance-top">
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="sync_documents">
+                <button type="submit" class="secondary-button">Re-sync Knowledge Base</button>
+            </form>
+        </section>
+    </div>
+
+    <div class="developer-grid">
+        <section class="developer-panel">
+            <p class="panel-kicker">Method 1</p>
+            <h2>Upload Knowledge File</h2>
+            <form method="post" enctype="multipart/form-data" class="developer-form upload-form">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="upload_document">
+
+                <label for="knowledge_file">Choose File</label>
+                <input id="knowledge_file" name="knowledge_file" type="file" accept=".txt,.md,.docx,.pdf" required>
+
+                <label for="upload_topic">Topic</label>
+                <input id="upload_topic" name="upload_topic" type="text" placeholder="Resume, interviews, cover letters...">
+
+                <label class="checkbox-row" for="upload_is_active">
+                    <input id="upload_is_active" name="upload_is_active" type="checkbox" checked>
+                    Include uploaded file in the active dataset
+                </label>
+
+                <p class="helper-text">Best for resume guides and interview notes. Supports .txt, .md, .docx, and simple text-based .pdf files.</p>
+
+                <div class="form-actions">
+                    <button type="submit">Upload File</button>
+                </div>
+            </form>
+
+            <div class="ingestion-divider"></div>
+
+            <p class="panel-kicker">Method 2</p>
+            <h2>Scrape Web Document</h2>
+            <form method="post" class="developer-form">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="scrape_document">
+
+                <label for="source_url">Page URL</label>
+                <input id="source_url" name="source_url" type="text" placeholder="https://example.com/interview-guide" required>
+
+                <label for="scrape_topic">Topic</label>
+                <input id="scrape_topic" name="scrape_topic" type="text" placeholder="Resume, interviews, cover letters...">
+
+                <label class="checkbox-row" for="scrape_is_active">
+                    <input id="scrape_is_active" name="scrape_is_active" type="checkbox" checked>
+                    Include scraped page in the active dataset
+                </label>
+
+                <p class="helper-text">Use a public article, guide, or other readable webpage.</p>
+
+                <div class="form-actions">
+                    <button type="submit">Scrape URL</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="developer-panel">
+            <p class="panel-kicker">Manual Entry</p>
+            <h2>{% if editing_document %}Edit Knowledge Document{% else %}Add Knowledge Document{% endif %}</h2>
+            <form method="post" class="developer-form">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="save_document">
+                {% if editing_document %}
+                    <input type="hidden" name="document_id" value="{{ editing_document.id }}">
+                {% endif %}
+
+                <label for="title">Title</label>
+                <input id="title" name="title" type="text" value="{% if editing_document %}{{ editing_document.title }}{% endif %}" required>
+
+                <label for="source_label">Source Label</label>
+                <input id="source_label" name="source_label" type="text" value="{% if editing_document %}{{ editing_document.source_label }}{% endif %}" required>
+
+                <label for="topic">Topic</label>
+                <input id="topic" name="topic" type="text" value="{% if editing_document %}{{ editing_document.topic }}{% endif %}" placeholder="Resume, interviews, cover letters...">
+
+                <label for="content">Knowledge Content</label>
+                <textarea id="content" name="content" rows="10" required>{% if editing_document %}{{ editing_document.content }}{% endif %}</textarea>
+                <p class="helper-text">Form changes are not saved until you click Save.</p>
+
+                <label class="checkbox-row" for="is_active">
+                    <input
+                        id="is_active"
+                        name="is_active"
+                        type="checkbox"
+                        {% if editing_document %}
+                            {% if editing_document.is_active %}checked{% endif %}
+                        {% else %}
+                            checked
+                        {% endif %}
+                    >
+                    Include this document in the active dataset
+                </label>
+
+                <div class="form-actions">
+                    <button type="submit">{% if editing_document %}Save Changes{% else %}Save Document{% endif %}</button>
+                    {% if editing_document %}
+                        <a class="button secondary-button" href="/developer/">Cancel</a>
+                    {% endif %}
+                </div>
+            </form>
+        </section>
+
+        <section class="developer-panel">
+            <div class="documents-header">
+                <div>
+                    <p class="panel-kicker">Dataset</p>
+                    <h2>Current Knowledge Documents</h2>
+                </div>
+                <span class="document-count">{{ documents|length }} document{{ documents|length|pluralize }}</span>
+            </div>
+            {% if documents %}
+                <div class="document-list">
+                    {% for document in documents %}
+                        <article class="document-card">
+                            <div class="document-card-header">
+                                <div>
+                                    <h3>{{ document.title }}</h3>
+                                    <p class="document-meta">
+                                        Source: {{ document.source_label }}
+                                        {% if document.topic %} | Topic: {{ document.topic }}{% endif %}
+                                    </p>
+                                </div>
+                                <span class="status-pill {% if document.is_active %}status-active{% else %}status-inactive{% endif %}">
+                                    {% if document.is_active %}Active{% else %}Inactive{% endif %}
+                                </span>
+                            </div>
+
+                            <p class="document-preview">{{ document.content|truncatechars:180 }}</p>
+                            <p class="document-meta">Last updated: {{ document.updated_at }}</p>
+
+                            <div class="form-actions">
+                                <form method="post">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="action" value="toggle_document_status">
+                                    <input type="hidden" name="document_id" value="{{ document.id }}">
+                                    <button type="submit" class="{% if document.is_active %}secondary-button{% else %}activate-button{% endif %}">
+                                        {% if document.is_active %}Deactivate{% else %}Activate{% endif %}
+                                    </button>
+                                </form>
+                                <a class="button secondary-button" href="/developer/?edit={{ document.id }}">Edit</a>
+                                <form method="post">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="action" value="delete_document">
+                                    <input type="hidden" name="document_id" value="{{ document.id }}">
+                                    <button type="submit" class="danger-button">Delete</button>
+                                </form>
+                            </div>
+                        </article>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p>No knowledge documents have been created yet. Add your first dataset entry to start replacing the mock content.</p>
+            {% endif %}
+        </section>
+    </div>
 </div>
 {% endblock %}
