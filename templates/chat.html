@@ -242,7 +242,8 @@
                     <div class="jp-message-row bot">
                         <div class="jp-message-bubble">
                             <div class="jp-message-label">JobPrepChatbot</div>
-                            <div>{{ chat.bot|linebreaksbr }}</div>
+                            {% load markdownify %}
+                            <div>{{ chat.bot|markdownify }}</div>
                             
                             {% if chat.sources %}
                             <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #e5e7eb;">

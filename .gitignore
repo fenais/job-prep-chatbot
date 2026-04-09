@@ -5,3 +5,4 @@ __pycache__/
 db.sqlite3
 chroma_db/
 model_cache/
+.env
