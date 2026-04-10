@@ -12,6 +12,7 @@ from xml.etree import ElementTree
 import certifi
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
+from django.db.models.functions import Substr
 from django.utils.text import slugify
 from pypdf import PdfReader
 
@@ -380,7 +381,11 @@ def developer(request):
     if edit_id:
         editing_document = get_object_or_404(KnowledgeDocument, pk=edit_id)
 
-    documents = KnowledgeDocument.objects.all()
+    documents = (
+        KnowledgeDocument.objects
+        .annotate(content_preview=Substr("content", 1, 180))
+        .only("id", "title", "source_label", "topic", "is_active", "updated_at")
+    )
 
     return render(request, "developer.html", {
         "documents": documents,
