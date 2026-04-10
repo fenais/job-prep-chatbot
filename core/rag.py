@@ -16,16 +16,54 @@ model_cache_path = settings.BASE_DIR / "model_cache" / "chroma_onnx"
 embedding_function_instance = None
 
 
+class SimpleEmbeddingFunction:
+    @staticmethod
+    def name():
+        return "simple_local_embedding"
+
+    def _embed(self, input):
+        embeddings = []
+
+        for text in input:
+            tokens = [token for token in re.split(r"\s+", text.lower().strip()) if token]
+            vector = [0.0] * 64
+
+            for token in tokens:
+                vector[hash(token) % len(vector)] += 1.0
+
+            norm = sum(value * value for value in vector) ** 0.5
+            if norm:
+                vector = [value / norm for value in vector]
+
+            embeddings.append(vector)
+
+        return embeddings
+
+    def __call__(self, input):
+        return self._embed(input)
+
+    def embed_documents(self, input):
+        return self._embed(input)
+
+    def embed_query(self, input):
+        return self._embed(input)
+
+
 def get_embedding_function():
     global embedding_function_instance
 
     if embedding_function_instance is not None:
         return embedding_function_instance
 
-    embedding_functions.ONNXMiniLM_L6_V2.DOWNLOAD_PATH = model_cache_path
-    embedding_function_instance = embedding_functions.ONNXMiniLM_L6_V2(
-        preferred_providers=["CPUExecutionProvider"]
-    )
+    model_cache_path.mkdir(parents=True, exist_ok=True)
+
+    try:
+        embedding_functions.ONNXMiniLM_L6_V2.DOWNLOAD_PATH = model_cache_path
+        embedding_function_instance = embedding_functions.ONNXMiniLM_L6_V2(
+            preferred_providers=["CPUExecutionProvider"]
+        )
+    except Exception:
+        embedding_function_instance = SimpleEmbeddingFunction()
 
     return embedding_function_instance
 

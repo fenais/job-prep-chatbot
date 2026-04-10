@@ -1,17 +1,24 @@
 from pathlib import Path
 import json
+import logging
 import re
+import ssl
 from urllib.parse import urlparse
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 import zipfile
 from xml.etree import ElementTree
 
+import certifi
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.text import slugify
+from pypdf import PdfReader
 
 from .models import KnowledgeDocument
 from .rag import get_rag_response, sync_knowledge_documents
+
+logger = logging.getLogger(__name__)
 
 
 def extract_uploaded_text(uploaded_file):
@@ -41,10 +48,13 @@ def extract_uploaded_text(uploaded_file):
         return "\n".join(paragraphs)
 
     if extension == ".pdf":
-        raw_text = uploaded_file.read().decode("latin-1", errors="ignore")
-        text_matches = re.findall(r"\(([^()]*)\)", raw_text)
-        extracted_text = " ".join(match.strip() for match in text_matches if match.strip())
-        return extracted_text
+        reader = PdfReader(uploaded_file)
+        pages = []
+        for page in reader.pages:
+            page_text = page.extract_text() or ""
+            if page_text.strip():
+                pages.append(page_text.strip())
+        return "\n".join(pages)
 
     raise ValueError("Supported file types are .txt, .md, .docx, and basic text-based .pdf files.")
 
@@ -78,17 +88,28 @@ def create_document_from_upload(uploaded_file, topic, is_active):
 
 
 def extract_url_text(url):
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
     request = Request(
         url,
         headers={
-            "User-Agent": "JobPrepChatbot/1.0",
-            "Accept": "text/html,application/json,text/plain;q=0.9,*/*;q=0.8",
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.7",
+            "Accept-Language": "en-US,en;q=0.9",
         },
     )
 
-    with urlopen(request, timeout=10) as response:
-        raw_bytes = response.read()
-        content_type = response.headers.get("Content-Type", "")
+    try:
+        with urlopen(request, timeout=12, context=ssl_context) as response:
+            raw_bytes = response.read()
+            content_type = response.headers.get("Content-Type", "")
+    except HTTPError as exc:
+        raise ValueError(f"The website blocked the request with HTTP {exc.code}.")
+    except URLError as exc:
+        raise ValueError(f"Could not reach that URL: {exc.reason}")
 
     text = raw_bytes.decode("utf-8", errors="ignore")
 
@@ -96,14 +117,29 @@ def extract_url_text(url):
         parsed_json = json.loads(text)
         return json.dumps(parsed_json, indent=2)
 
-    # Very lightweight HTML/text extraction for public guidance pages.
+    main_match = re.search(r"(?is)<main[^>]*>(.*?)</main>", text)
+    article_match = re.search(r"(?is)<article[^>]*>(.*?)</article>", text)
+    body_match = re.search(r"(?is)<body[^>]*>(.*?)</body>", text)
+    preferred_content = article_match or main_match or body_match
+    if preferred_content:
+        text = preferred_content.group(1)
+
     text = re.sub(r"(?is)<script.*?>.*?</script>", " ", text)
     text = re.sub(r"(?is)<style.*?>.*?</style>", " ", text)
+    text = re.sub(r"(?is)<nav.*?>.*?</nav>", " ", text)
+    text = re.sub(r"(?is)<footer.*?>.*?</footer>", " ", text)
+    text = re.sub(r"(?is)<header.*?>.*?</header>", " ", text)
+    text = re.sub(r"(?is)<aside.*?>.*?</aside>", " ", text)
     text = re.sub(r"(?is)<[^>]+>", " ", text)
     text = re.sub(r"&nbsp;", " ", text)
     text = re.sub(r"&amp;", "&", text)
     text = re.sub(r"\s+", " ", text)
-    return text.strip()
+    cleaned_text = text.strip()
+
+    if len(cleaned_text) < 120:
+        raise ValueError("The page did not return enough readable text to ingest.")
+
+    return cleaned_text
 
 
 def create_document_from_url(url, topic, is_active):
@@ -265,8 +301,9 @@ def developer(request):
                 document = create_document_from_url(source_url, topic, is_active)
                 sync_knowledge_documents()
                 messages.success(request, f'Scraped "{document.title}" from URL.')
-            except Exception:
-                messages.error(request, "Scraping failed. Try a public text or HTML page.")
+            except Exception as exc:
+                logger.exception("Scraping failed for URL: %s", source_url)
+                messages.error(request, "Scraping failed. Try a public article or guide page.")
 
             return redirect("developer")
 
@@ -300,14 +337,24 @@ def developer(request):
             return redirect("developer")
 
         if action == "delete_document":
-            document = get_object_or_404(KnowledgeDocument, pk=request.POST.get("document_id"))
+            document_id = request.POST.get("document_id")
+            document = KnowledgeDocument.objects.filter(pk=document_id).first()
+            if not document:
+                messages.error(request, "That knowledge document could not be found.")
+                return redirect("developer")
+
             document.delete()
             sync_knowledge_documents()
             messages.success(request, "Knowledge document deleted.")
             return redirect("developer")
 
         if action == "toggle_document_status":
-            document = get_object_or_404(KnowledgeDocument, pk=request.POST.get("document_id"))
+            document_id = request.POST.get("document_id")
+            document = KnowledgeDocument.objects.filter(pk=document_id).first()
+            if not document:
+                messages.error(request, "That knowledge document could not be found.")
+                return redirect("developer")
+
             document.is_active = not document.is_active
             document.save()
             sync_knowledge_documents()
