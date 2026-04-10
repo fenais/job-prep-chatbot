@@ -278,8 +278,10 @@ def developer(request):
 
             try:
                 document = create_document_from_upload(uploaded_file, topic, is_active)
-                sync_knowledge_documents()
-                messages.success(request, f'Uploaded "{document.title}" into the knowledge base.')
+                messages.success(
+                    request,
+                    f'Uploaded "{document.title}" into the knowledge base. Click Re-sync Knowledge Base to update search.',
+                )
             except (ValueError, KeyError, UnicodeDecodeError, zipfile.BadZipFile):
                 messages.error(
                     request,
@@ -299,8 +301,10 @@ def developer(request):
 
             try:
                 document = create_document_from_url(source_url, topic, is_active)
-                sync_knowledge_documents()
-                messages.success(request, f'Scraped "{document.title}" from URL.')
+                messages.success(
+                    request,
+                    f'Scraped "{document.title}" from URL. Click Re-sync Knowledge Base to update search.',
+                )
             except Exception as exc:
                 logger.exception("Scraping failed for URL: %s", source_url)
                 messages.error(request, "Scraping failed. Try a public article or guide page.")
@@ -331,8 +335,10 @@ def developer(request):
                 document.content = content
                 document.is_active = is_active
                 document.save()
-                sync_knowledge_documents()
-                messages.success(request, success_message)
+                messages.success(
+                    request,
+                    f"{success_message} Click Re-sync Knowledge Base to update search.",
+                )
 
             return redirect("developer")
 
@@ -344,8 +350,7 @@ def developer(request):
                 return redirect("developer")
 
             document.delete()
-            sync_knowledge_documents()
-            messages.success(request, "Knowledge document deleted.")
+            messages.success(request, "Knowledge document deleted. Click Re-sync Knowledge Base to update search.")
             return redirect("developer")
 
         if action == "toggle_document_status":
@@ -357,9 +362,11 @@ def developer(request):
 
             document.is_active = not document.is_active
             document.save()
-            sync_knowledge_documents()
             status_label = "active" if document.is_active else "inactive"
-            messages.success(request, f'"{document.title}" is now {status_label}.')
+            messages.success(
+                request,
+                f'"{document.title}" is now {status_label}. Click Re-sync Knowledge Base to update search.',
+            )
             return redirect("developer")
 
         if action == "sync_documents":
