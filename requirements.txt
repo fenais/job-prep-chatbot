@@ -10,3 +10,4 @@ anthropic
 python-dotenv
 django-markdownify
 pypdf
+psycopg2-binary

@@ -11,6 +11,7 @@ from xml.etree import ElementTree
 
 import certifi
 from django.contrib import messages
+from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, redirect, render
 from django.db.models.functions import Substr
 from django.utils.text import slugify
@@ -385,10 +386,15 @@ def developer(request):
         KnowledgeDocument.objects
         .annotate(content_preview=Substr("content", 1, 180))
         .only("id", "title", "source_label", "topic", "is_active", "updated_at")
+        .order_by("-updated_at", "title")
     )
 
+    paginator = Paginator(documents, 10)
+    page_number = request.GET.get("page", 1)
+    page_obj = paginator.get_page(page_number)
+
     return render(request, "developer.html", {
-        "documents": documents,
+        "documents": page_obj,
         "editing_document": editing_document,
     })
 

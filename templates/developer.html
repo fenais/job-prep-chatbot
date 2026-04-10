@@ -122,11 +122,11 @@
                     <p class="panel-kicker">Dataset</p>
                     <h2>Current Knowledge Documents</h2>
                 </div>
-                <span class="document-count">{{ documents|length }} document{{ documents|length|pluralize }}</span>
+                <span class="document-count">{{ documents.paginator.count }} document{{ documents.paginator.count|pluralize }}</span>
             </div>
-            {% if documents %}
+            {% if documents.object_list %}
                 <div class="document-list">
-                    {% for document in documents %}
+                    {% for document in documents.object_list %}
                         <article class="document-card">
                             <div class="document-card-header">
                                 <div>
@@ -164,6 +164,18 @@
                         </article>
                     {% endfor %}
                 </div>
+
+                {% if documents.has_other_pages %}
+                    <div class="pagination">
+                        {% if documents.has_previous %}
+                            <a class="button secondary-button" href="?page={{ documents.previous_page_number }}">Previous</a>
+                        {% endif %}
+                        <span>Page {{ documents.number }} of {{ documents.paginator.num_pages }}</span>
+                        {% if documents.has_next %}
+                            <a class="button secondary-button" href="?page={{ documents.next_page_number }}">Next</a>
+                        {% endif %}
+                    </div>
+                {% endif %}
             {% else %}
                 <p>No knowledge documents have been created yet. Add your first dataset entry to start replacing the mock content.</p>
             {% endif %}
