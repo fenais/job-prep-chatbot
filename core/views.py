@@ -24,6 +24,7 @@ import time
 from django.db.models import Avg, Max, Count, Q
 from django.shortcuts import render
 from .models import PerformanceLog
+from django.contrib.admin.views.decorators import staff_member_required
 
 logger = logging.getLogger(__name__)
 
@@ -242,8 +243,10 @@ def create_document_from_api(api_url, topic, is_active, field_names):
 
     return document
 
+
 def home(request):
     return render(request, "home.html")
+
 
 def chat(request):
     chat_history = request.session.get("chat_history", [])
@@ -256,19 +259,46 @@ def chat(request):
         user_message = request.POST.get("message", "").strip()
 
         if user_message:
-            rag_data = get_rag_response(user_message)
+            start = time.perf_counter()
+            try:
+                rag_data = get_rag_response(user_message)
+                latency_ms = (time.perf_counter() - start) * 1000
 
-            chat_history.append({
-                "user": user_message,
-                "bot": rag_data["answer"],
-                "sources": rag_data["sources"] 
-            })
+                PerformanceLog.objects.create(
+                    question=user_message,
+                    latency_ms=latency_ms,
+                    success=True,
+                    source_count=len(rag_data.get("sources", [])),
+                )
+
+                chat_history.append({
+                    "user": user_message,
+                    "bot": rag_data["answer"],
+                    "sources": rag_data["sources"],
+                })
+
+            except Exception as e:
+                latency_ms = (time.perf_counter() - start) * 1000
+
+                PerformanceLog.objects.create(
+                    question=user_message,
+                    latency_ms=latency_ms,
+                    success=False,
+                    error_message=str(e),
+                )
+
+                chat_history.append({
+                    "user": user_message,
+                    "bot": "Sorry, something went wrong. Please try again.",
+                    "sources": [],
+                })
 
             request.session["chat_history"] = chat_history
 
     return render(request, "chat.html", {
         "chat_history": chat_history
     })
+
 
 def developer(request):
     if request.method == "POST":
@@ -403,33 +433,6 @@ def developer(request):
         "editing_document": editing_document,
     })
 
-def admin_dashboard(request):
-    return render(request, "admin_dashboard.html")
-
-start = time.perf_counter()
-
-try:
-    result = your_rag_function(question)
-    latency_ms = (time.perf_counter() - start) * 1000
-
-    PerformanceLog.objects.create(
-        question=question,
-        latency_ms=latency_ms,
-        success=True,
-        source_count=len(result.get("sources", [])) if isinstance(result, dict) else 0
-    )
-
-except Exception as e:
-    latency_ms = (time.perf_counter() - start) * 1000
-
-    PerformanceLog.objects.create(
-        question=question,
-        latency_ms=latency_ms,
-        success=False,
-        error_message=str(e)
-    )
-
-from django.contrib.admin.views.decorators import staff_member_required
 
 @staff_member_required
 def admin_dashboard(request):
