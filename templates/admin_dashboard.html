@@ -1,8 +1,47 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
-    <h1>Administrator Dashboard</h1>
-    <p>This section will support monitoring, usage logs, and knowledge base management.</p>
+<h1>Admin Performance Dashboard</h1>
+
+<div>
+    <p><strong>Total Requests:</strong> {{ stats.total_requests }}</p>
+    <p><strong>Successful Requests:</strong> {{ stats.successes }}</p>
+    <p><strong>Failed Requests:</strong> {{ stats.failures }}</p>
+    <p><strong>Average Latency:</strong> {{ stats.avg_latency|floatformat:2 }} ms</p>
+    <p><strong>Max Latency:</strong> {{ stats.max_latency|floatformat:2 }} ms</p>
 </div>
+
+<h2>Recent Logs</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Timestamp</th>
+            <th>Question</th>
+            <th>Latency (ms)</th>
+            <th>Status</th>
+            <th>Error</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for log in recent_logs %}
+        <tr>
+            <td>{{ log.timestamp }}</td>
+            <td>{{ log.question|truncatechars:60 }}</td>
+            <td>{{ log.latency_ms|floatformat:2 }}</td>
+            <td>
+                {% if log.success %}
+                    Success
+                {% else %}
+                    Failure
+                {% endif %}
+            </td>
+            <td>{{ log.error_message|default:"-" }}</td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="5">No logs yet.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
 {% endblock %}

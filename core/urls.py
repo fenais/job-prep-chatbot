@@ -6,4 +6,5 @@ urlpatterns = [
     path("chat/", views.chat, name="chat"),
     path("developer/", views.developer, name="developer"),
     path("admin-dashboard/", views.admin_dashboard, name="admin_dashboard"),
+    path("admin-dashboard/", views.admin_dashboard, name="admin_dashboard"),
 ]

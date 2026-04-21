@@ -20,6 +20,11 @@ from pypdf import PdfReader
 from .models import KnowledgeDocument
 from .rag import get_rag_response, sync_knowledge_documents
 
+import time
+from django.db.models import Avg, Max, Count, Q
+from django.shortcuts import render
+from .models import PerformanceLog
+
 logger = logging.getLogger(__name__)
 
 
@@ -400,3 +405,46 @@ def developer(request):
 
 def admin_dashboard(request):
     return render(request, "admin_dashboard.html")
+
+start = time.perf_counter()
+
+try:
+    result = your_rag_function(question)
+    latency_ms = (time.perf_counter() - start) * 1000
+
+    PerformanceLog.objects.create(
+        question=question,
+        latency_ms=latency_ms,
+        success=True,
+        source_count=len(result.get("sources", [])) if isinstance(result, dict) else 0
+    )
+
+except Exception as e:
+    latency_ms = (time.perf_counter() - start) * 1000
+
+    PerformanceLog.objects.create(
+        question=question,
+        latency_ms=latency_ms,
+        success=False,
+        error_message=str(e)
+    )
+
+from django.contrib.admin.views.decorators import staff_member_required
+
+@staff_member_required
+def admin_dashboard(request):
+    logs = PerformanceLog.objects.order_by("-timestamp")
+    recent_logs = logs[:20]
+
+    stats = logs.aggregate(
+        total_requests=Count("id"),
+        avg_latency=Avg("latency_ms"),
+        max_latency=Max("latency_ms"),
+        failures=Count("id", filter=Q(success=False)),
+        successes=Count("id", filter=Q(success=True)),
+    )
+
+    return render(request, "admin_dashboard.html", {
+        "stats": stats,
+        "recent_logs": recent_logs,
+    })

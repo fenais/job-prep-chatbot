@@ -15,3 +15,17 @@ class KnowledgeDocument(models.Model):
 
     def __str__(self):
         return self.title
+    
+from django.db import models
+
+class PerformanceLog(models.Model):
+    timestamp = models.DateTimeField(auto_now_add=True)
+    question = models.TextField(blank=True)
+    latency_ms = models.FloatField()
+    success = models.BooleanField(default=True)
+    error_message = models.TextField(blank=True)
+    source_count = models.IntegerField(default=0)
+
+    def __str__(self):
+        status = "Success" if self.success else "Failure"
+        return f"{self.timestamp} - {status} - {self.latency_ms:.2f} ms"
