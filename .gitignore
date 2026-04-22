@@ -7,3 +7,4 @@ chroma_db/
 model_cache/
 .env
 .DS_Store
+staticfiles/
