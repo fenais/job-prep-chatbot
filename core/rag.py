@@ -1,4 +1,5 @@
 import chromadb
+import json
 import os
 import re
 import anthropic
@@ -298,6 +299,16 @@ def build_system_prompt(intent, topic):
     return base + "\n\nProvide a helpful, well-organised answer. Use the context to ground your response and keep it relevant to job preparation."
 
 
+def build_evaluation_system_prompt(topic):
+    return (
+        "You are JobPrepChatbot, an expert career coach specialising in "
+        f"job preparation{', specifically ' + topic if topic and topic.lower() != 'general job prep' else ''}. "
+        "Answer only using the provided context. "
+        "Respond in 2 to 4 short sentences with no markdown, no bullets, and no extra framing. "
+        "If the context does not contain enough information, say so clearly in one short sentence."
+    )
+
+
 def build_user_prompt(user_query, context_chunks, intent):
     context_block = "\n\n".join(f"- {chunk}" for chunk in context_chunks)
     if intent == _INTENT_REVIEW:
@@ -307,7 +318,7 @@ def build_user_prompt(user_query, context_chunks, intent):
     return f"Context from the knowledge base:\n{context_block}\n\nQuestion: {user_query}"
 
 
-def get_rag_response(user_query):
+def get_quick_response(user_query):
     message = user_query.lower().strip()
     words = re.findall(r"\b[\w']+\b", message)
 
@@ -322,6 +333,14 @@ def get_rag_response(user_query):
     if "what can you do" in message or "how can you help" in message or ("help" in words and len(words) <= 3):
         return {"answer": "I can answer questions about resumes, cover letters, interviews, internships, and general job preparation.", "sources": []}
 
+    return None
+
+
+def prepare_rag_response(user_query, evaluation_mode=False):
+    quick_response = get_quick_response(user_query)
+    if quick_response is not None:
+        return {"kind": "ready", **quick_response}
+
     active_collection = get_collection()
 
     if collection_count(active_collection) == 0:
@@ -330,19 +349,22 @@ def get_rag_response(user_query):
 
     if collection_count(active_collection) == 0:
         return {
+            "kind": "ready",
             "answer": "The knowledge base is empty right now. A developer needs to add job prep documents before I can answer dataset-grounded questions.",
             "sources": []
         }
 
+    n_results = min(2, collection_count(active_collection)) if evaluation_mode else min(3, collection_count(active_collection))
     results = active_collection.query(
         query_texts=[normalize_text(user_query)],
-        n_results=min(3, collection_count(active_collection))
+        n_results=n_results
     )
     retrieved_docs = results["documents"][0]
     retrieved_metadata = results["metadatas"][0]
 
     if not retrieved_docs:
         return {
+            "kind": "ready",
             "answer": "I could not find a relevant match in the current job prep dataset. Try rephrasing your question or ask a developer to expand the knowledge base.",
             "sources": []
         }
@@ -351,16 +373,35 @@ def get_rag_response(user_query):
     topic = retrieved_metadata[0].get("topic", "General Job Prep") if retrieved_metadata else "General Job Prep"
 
     intent = classify_intent(user_query)
-    system_prompt = build_system_prompt(intent, topic)
+    system_prompt = build_evaluation_system_prompt(topic) if evaluation_mode else build_system_prompt(intent, topic)
     user_prompt = build_user_prompt(user_query, retrieved_docs, intent)
+
+    return {
+        "kind": "llm",
+        "sources": sources,
+        "system_prompt": system_prompt,
+        "user_prompt": user_prompt,
+        "evaluation_mode": evaluation_mode,
+    }
+
+
+def get_rag_response(user_query, evaluation_mode=False):
+    prepared = prepare_rag_response(user_query, evaluation_mode=evaluation_mode)
+
+    if prepared["kind"] == "ready":
+        return {
+            "answer": prepared["answer"],
+            "sources": prepared["sources"],
+        }
 
     try:
         anthropic_client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
         response = anthropic_client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=1024,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}],
+            max_tokens=220 if prepared["evaluation_mode"] else 1024,
+            temperature=0 if prepared["evaluation_mode"] else 1,
+            system=prepared["system_prompt"],
+            messages=[{"role": "user", "content": prepared["user_prompt"]}],
         )
         answer = response.content[0].text
     except Exception as exc:
@@ -368,5 +409,53 @@ def get_rag_response(user_query):
 
     return {
         "answer": answer,
-        "sources": sources
+        "sources": prepared["sources"]
     }
+
+
+def stream_rag_response(user_query):
+    prepared = prepare_rag_response(user_query, evaluation_mode=False)
+
+    if prepared["kind"] == "ready":
+        yield {
+            "type": "token",
+            "text": prepared["answer"],
+        }
+        yield {
+            "type": "done",
+            "answer": prepared["answer"],
+            "sources": prepared["sources"],
+        }
+        return
+
+    anthropic_client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+    chunks = []
+
+    try:
+        with anthropic_client.messages.stream(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1024,
+            system=prepared["system_prompt"],
+            messages=[{"role": "user", "content": prepared["user_prompt"]}],
+        ) as stream:
+            for text in stream.text_stream:
+                if text:
+                    chunks.append(text)
+                    yield {
+                        "type": "token",
+                        "text": text,
+                    }
+
+        answer = "".join(chunks)
+        yield {
+            "type": "done",
+            "answer": answer,
+            "sources": prepared["sources"],
+        }
+    except Exception as exc:
+        answer = f"I retrieved relevant context from the knowledge base but could not generate a response due to an API error: {exc}"
+        yield {
+            "type": "error",
+            "answer": answer,
+            "sources": prepared["sources"],
+        }

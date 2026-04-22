@@ -87,6 +87,7 @@
     .jp-message-row {
         display: flex;
         margin-bottom: 18px;
+        animation: jpMessageIn 0.22s ease-out;
     }
 
     .jp-message-row.user {
@@ -104,6 +105,17 @@
         line-height: 1.5;
         font-size: 0.98rem;
         word-break: break-word;
+    }
+
+    @keyframes jpMessageIn {
+        from {
+            opacity: 0;
+            transform: translateY(8px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
     }
 
     .jp-message-row.user .jp-message-bubble {
@@ -173,6 +185,12 @@
         background: #173074;
     }
 
+    .jp-send-btn:disabled,
+    .jp-clear-btn:disabled {
+        opacity: 0.65;
+        cursor: not-allowed;
+    }
+
     .jp-clear-row {
         margin-top: 10px;
     }
@@ -184,6 +202,110 @@
 
     .jp-clear-btn:hover {
         background: #e0e7ff;
+    }
+
+    .jp-chat-status {
+        margin-top: 10px;
+        color: #6b7280;
+        font-size: 0.9rem;
+        min-height: 1.2rem;
+    }
+
+    .jp-typing-row {
+        justify-content: flex-start;
+    }
+
+    .jp-typing-bubble {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 56px;
+    }
+
+    .jp-typing-dots {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .jp-typing-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #6b7280;
+        animation: jpTypingBounce 1s infinite ease-in-out;
+    }
+
+    .jp-typing-dot:nth-child(2) {
+        animation-delay: 0.14s;
+    }
+
+    .jp-typing-dot:nth-child(3) {
+        animation-delay: 0.28s;
+    }
+
+    .jp-sources {
+        margin-top: 12px;
+        padding-top: 10px;
+        border-top: 1px solid #e5e7eb;
+    }
+
+    .jp-sources summary {
+        list-style: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        color: #1e3a8a;
+        font-size: 0.8rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .jp-sources summary::-webkit-details-marker {
+        display: none;
+    }
+
+    .jp-sources summary::before {
+        content: "+";
+        font-size: 1rem;
+        line-height: 1;
+    }
+
+    .jp-sources[open] summary::before {
+        content: "-";
+    }
+
+    .jp-source-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 10px 0 0 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    .jp-source-chip {
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: #eef3ff;
+        color: #1e3a8a;
+        font-size: 0.82rem;
+        font-weight: 600;
+    }
+
+    @keyframes jpTypingBounce {
+        0%, 80%, 100% {
+            transform: translateY(0);
+            opacity: 0.45;
+        }
+        40% {
+            transform: translateY(-5px);
+            opacity: 1;
+        }
     }
 
     @media (max-width: 768px) {
@@ -246,14 +368,14 @@
                             <div>{{ chat.bot|markdownify }}</div>
                             
                             {% if chat.sources %}
-                            <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #e5e7eb;">
-                                <strong style="font-size: 0.8rem; color: #6b7280; text-transform: uppercase;">Sources Used:</strong>
-                                <ul style="margin: 4px 0 0; padding-left: 18px; font-size: 0.85rem; color: #1e3a8a;">
+                            <details class="jp-sources">
+                                <summary>{{ chat.sources|length }} source{{ chat.sources|length|pluralize }}</summary>
+                                <ul class="jp-source-list">
                                     {% for source in chat.sources %}
-                                        <li>{{ source }}</li>
+                                        <li class="jp-source-chip">{{ source }}</li>
                                     {% endfor %}
                                 </ul>
-                            </div>
+                            </details>
                             {% endif %}
                         </div>
                     </div>                {% endfor %}
@@ -295,17 +417,17 @@
         </div>
 
         <div class="jp-chat-bottom">
-            <form method="POST">
+            <form method="POST" id="jp-chat-form">
                 {% csrf_token %}
                 <div class="jp-input-row">
                     <input type="text" name="message" id="jp-chat-input" placeholder="Ask a question...">
-                    <button type="submit" class="jp-send-btn">Send</button>
+                    <button type="submit" class="jp-send-btn" id="jp-send-btn">Send</button>
                 </div>
             </form>
 
-            <form method="POST" class="jp-clear-row">
+            <form method="POST" class="jp-clear-row" id="jp-clear-form">
                 {% csrf_token %}
-                <button type="submit" name="clear_chat" value="1" class="jp-clear-btn">Clear Chat</button>
+                <button type="submit" name="clear_chat" value="1" class="jp-clear-btn" id="jp-clear-btn">Clear Chat</button>
             </form>
         </div>
     </div>
@@ -313,21 +435,330 @@
 
 <script>
     const chatBody = document.getElementById("jp-chat-body");
-    if (chatBody) {
-        chatBody.scrollTop = chatBody.scrollHeight;
+    const chatInput = document.getElementById("jp-chat-input");
+    const chatForm = document.getElementById("jp-chat-form");
+    const clearForm = document.getElementById("jp-clear-form");
+    const sendButton = document.getElementById("jp-send-btn");
+    const clearButton = document.getElementById("jp-clear-btn");
+    const csrfToken = document.querySelector("#jp-chat-form input[name='csrfmiddlewaretoken']")?.value;
+    const typingIndicatorId = "jp-typing-indicator";
+    let activeStreamBotContent = null;
+
+    function scrollChatToBottom() {
+        if (chatBody) {
+            chatBody.scrollTop = chatBody.scrollHeight;
+        }
     }
 
-    const chatInput = document.getElementById("jp-chat-input");
-    const suggestionButtons = document.querySelectorAll(".jp-suggestion-btn");
+    function escapeHtml(value) {
+        return value
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#39;");
+    }
 
-    suggestionButtons.forEach((button) => {
-        button.addEventListener("click", () => {
-            const question = button.getAttribute("data-question");
+    function renderSources(sources) {
+        if (!sources || !sources.length) {
+            return "";
+        }
+
+        const sourceItems = sources.map((source) => `<li class="jp-source-chip">${escapeHtml(source)}</li>`).join("");
+        return `
+            <details class="jp-sources">
+                <summary>${sources.length} source${sources.length === 1 ? "" : "s"}</summary>
+                <ul class="jp-source-list">
+                    ${sourceItems}
+                </ul>
+            </details>
+        `;
+    }
+
+    function renderChatMessage(chat) {
+        return `
+            <div class="jp-message-row user">
+                <div class="jp-message-bubble">
+                    <div class="jp-message-label">You</div>
+                    <div>${escapeHtml(chat.user)}</div>
+                </div>
+            </div>
+            <div class="jp-message-row bot">
+                <div class="jp-message-bubble">
+                    <div class="jp-message-label">JobPrepChatbot</div>
+                    <div style="white-space: pre-wrap;">${escapeHtml(chat.bot)}</div>
+                    ${renderSources(chat.sources)}
+                </div>
+            </div>
+        `;
+    }
+
+    function renderEmptyState() {
+        return `
+            <div class="jp-empty-state">
+                <div class="jp-empty-icon">💼</div>
+                <div class="jp-topic-tags">
+                    <span class="jp-tag">Resume Help</span>
+                    <span class="jp-tag">Cover Letters</span>
+                    <span class="jp-tag">Interview Prep</span>
+                    <span class="jp-tag">Internships</span>
+                </div>
+                <h2 class="jp-empty-title">Let’s get you career-ready</h2>
+                <p class="jp-empty-text">
+                    Ask anything about resumes, cover letters, interviews, internships, or general job prep.
+                </p>
+                <div class="jp-suggestion-grid">
+                    <button type="button" class="jp-suggestion-btn" data-question="How do I improve my resume bullets?">How do I improve my resume bullets?</button>
+                    <button type="button" class="jp-suggestion-btn" data-question="How do I start a cover letter?">How do I start a cover letter?</button>
+                    <button type="button" class="jp-suggestion-btn" data-question="How do I prepare for a technical interview?">How do I prepare for a technical interview?</button>
+                    <button type="button" class="jp-suggestion-btn" data-question="How do I get an internship?">How do I get an internship?</button>
+                </div>
+            </div>
+        `;
+    }
+
+    function bindSuggestionButtons() {
+        document.querySelectorAll(".jp-suggestion-btn").forEach((button) => {
+            button.addEventListener("click", () => {
+                const question = button.getAttribute("data-question");
+                if (chatInput) {
+                    chatInput.value = question;
+                    chatInput.focus();
+                }
+            });
+        });
+    }
+
+    function renderTypingIndicator() {
+        return `
+            <div class="jp-message-row bot jp-typing-row" id="${typingIndicatorId}">
+                <div class="jp-message-bubble jp-typing-bubble">
+                    <div class="jp-message-label">JobPrepChatbot</div>
+                    <div class="jp-typing-dots" aria-label="JobPrepChatbot is typing">
+                        <span class="jp-typing-dot"></span>
+                        <span class="jp-typing-dot"></span>
+                        <span class="jp-typing-dot"></span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function showTypingIndicator() {
+        if (!chatBody || document.getElementById(typingIndicatorId)) {
+            return;
+        }
+        const emptyState = chatBody.querySelector(".jp-empty-state");
+        if (emptyState) {
+            emptyState.remove();
+        }
+        chatBody.insertAdjacentHTML("beforeend", renderTypingIndicator());
+        scrollChatToBottom();
+    }
+
+    function hideTypingIndicator() {
+        document.getElementById(typingIndicatorId)?.remove();
+    }
+
+    function appendUserMessage(message) {
+        if (!chatBody) {
+            return;
+        }
+        const emptyState = chatBody.querySelector(".jp-empty-state");
+        if (emptyState) {
+            emptyState.remove();
+        }
+        chatBody.insertAdjacentHTML(
+            "beforeend",
+            `
+                <div class="jp-message-row user">
+                    <div class="jp-message-bubble">
+                        <div class="jp-message-label">You</div>
+                        <div>${escapeHtml(message)}</div>
+                    </div>
+                </div>
+            `,
+        );
+        scrollChatToBottom();
+    }
+
+    function appendBotMessage(chat) {
+        if (!chatBody) {
+            return;
+        }
+        const botContent = chat.bot_html || `<div style="white-space: pre-wrap;">${escapeHtml(chat.bot || "")}</div>`;
+        chatBody.insertAdjacentHTML(
+            "beforeend",
+            `
+                <div class="jp-message-row bot">
+                    <div class="jp-message-bubble">
+                        <div class="jp-message-label">JobPrepChatbot</div>
+                        <div>${botContent}</div>
+                        ${renderSources(chat.sources)}
+                    </div>
+                </div>
+            `,
+        );
+        scrollChatToBottom();
+    }
+
+    function createStreamingBotMessage() {
+        if (!chatBody) {
+            return null;
+        }
+        const container = document.createElement("div");
+        container.className = "jp-message-row bot";
+        container.innerHTML = `
+            <div class="jp-message-bubble">
+                <div class="jp-message-label">JobPrepChatbot</div>
+                <div class="jp-streaming-content" style="white-space: pre-wrap;"></div>
+            </div>
+        `;
+        chatBody.appendChild(container);
+        scrollChatToBottom();
+        return container.querySelector(".jp-streaming-content");
+    }
+
+    function setPendingState(isPending) {
+        if (sendButton) {
+            sendButton.disabled = isPending;
+            sendButton.textContent = isPending ? "Sending..." : "Send";
+        }
+        if (clearButton) {
+            clearButton.disabled = isPending;
+        }
+    }
+
+    scrollChatToBottom();
+
+    bindSuggestionButtons();
+
+    if (chatForm) {
+        chatForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+
+            const message = chatInput?.value.trim() || "";
+            if (!message) {
+                return;
+            }
+
+            appendUserMessage(message);
             if (chatInput) {
-                chatInput.value = question;
-                chatInput.focus();
+                chatInput.value = "";
+            }
+            setPendingState(true);
+            showTypingIndicator();
+
+            try {
+                const response = await fetch("{% url 'chat' %}", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+                        "X-Requested-With": "XMLHttpRequest",
+                        "X-CSRFToken": csrfToken || "",
+                        "X-Chat-Stream": "true",
+                    },
+                    body: new URLSearchParams({ message }),
+                });
+
+                if (!response.ok) {
+                    throw new Error("Something went wrong.");
+                }
+
+                hideTypingIndicator();
+                activeStreamBotContent = createStreamingBotMessage();
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = "";
+                let streamedText = "";
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) {
+                        break;
+                    }
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split("\n");
+                    buffer = lines.pop() || "";
+
+                    for (const line of lines) {
+                        if (!line.trim()) {
+                            continue;
+                        }
+                        const eventData = JSON.parse(line);
+                        if (eventData.type === "token") {
+                            streamedText += eventData.text || "";
+                            if (activeStreamBotContent) {
+                                activeStreamBotContent.textContent = streamedText;
+                            }
+                            scrollChatToBottom();
+                        }
+                        if (eventData.type === "done" || eventData.type === "error") {
+                            if (activeStreamBotContent) {
+                                const bubble = activeStreamBotContent.closest(".jp-message-bubble");
+                                if (bubble) {
+                                    bubble.innerHTML = `
+                                        <div class="jp-message-label">JobPrepChatbot</div>
+                                        <div>${eventData.bot_html || `<div style="white-space: pre-wrap;">${escapeHtml(eventData.answer || streamedText)}</div>`}</div>
+                                        ${renderSources(eventData.sources || [])}
+                                    `;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                activeStreamBotContent = null;
+                setPendingState(false);
+            } catch (error) {
+                hideTypingIndicator();
+                if (activeStreamBotContent) {
+                    activeStreamBotContent.closest(".jp-message-row")?.remove();
+                    activeStreamBotContent = null;
+                }
+                appendBotMessage({
+                    bot: error.message || "Something went wrong.",
+                    sources: [],
+                });
+                setPendingState(false);
             }
         });
-    });
+    }
+
+    if (clearForm) {
+        clearForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            setPendingState(true);
+            hideTypingIndicator();
+
+            try {
+                const response = await fetch("{% url 'chat' %}", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+                        "X-Requested-With": "XMLHttpRequest",
+                        "X-CSRFToken": csrfToken || "",
+                    },
+                    body: new URLSearchParams({ clear_chat: "1" }),
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || "Could not clear chat.");
+                }
+
+                chatBody.innerHTML = renderEmptyState();
+                bindSuggestionButtons();
+                if (chatInput) {
+                    chatInput.value = "";
+                }
+                scrollChatToBottom();
+                setPendingState(false);
+            } catch (error) {
+                setPendingState(false);
+            }
+        });
+    }
 </script>
 {% endblock %}

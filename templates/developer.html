@@ -1,184 +1,502 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card developer-page">
+<div id="developer-top" class="card developer-page">
     <div class="developer-header">
         <div>
-            <h1>Developer View</h1>
-            <p>Manage the job prep dataset and ingestion workflows that power grounded chatbot responses.</p>
+            <p class="eyebrow-label">Developer Console</p>
+            <h1>Knowledge Ops Workspace</h1>
+            <p>Manage the chatbot knowledge base, rebuild the index when needed, and run saved accuracy checks.</p>
         </div>
 
         <section class="developer-maintenance developer-maintenance-top">
-            <form method="post">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="sync_documents">
-                <button type="submit" class="secondary-button">Re-sync Knowledge Base</button>
-            </form>
+            <div class="maintenance-actions">
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="sync_documents">
+                    <button type="submit" class="secondary-button">Re-sync Knowledge Base</button>
+                </form>
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="run_accuracy_tests">
+                    <button type="submit">Run Accuracy Tests</button>
+                </form>
+            </div>
         </section>
     </div>
 
-    <div class="developer-grid">
-        <section class="developer-panel">
-            <p class="panel-kicker">Method 1</p>
-            <h2>Upload Knowledge File</h2>
-            <form method="post" enctype="multipart/form-data" class="developer-form upload-form">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="upload_document">
-
-                <label for="knowledge_file">Choose File</label>
-                <input id="knowledge_file" name="knowledge_file" type="file" accept=".txt,.md,.docx,.pdf" required>
-
-                <label for="upload_topic">Topic</label>
-                <input id="upload_topic" name="upload_topic" type="text" placeholder="Resume, interviews, cover letters...">
-
-                <label class="checkbox-row" for="upload_is_active">
-                    <input id="upload_is_active" name="upload_is_active" type="checkbox" checked>
-                    Include uploaded file in the active dataset
-                </label>
-
-                <p class="helper-text">Best for resume guides and interview notes. Supports .txt, .md, .docx, and .pdf files.</p>
-
-                <div class="form-actions">
-                    <button type="submit">Upload File</button>
-                </div>
-            </form>
-
-            <div class="ingestion-divider"></div>
-
-            <p class="panel-kicker">Method 2</p>
-            <h2>Scrape Web Document</h2>
-            <form method="post" class="developer-form">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="scrape_document">
-
-                <label for="source_url">Page URL</label>
-                <input id="source_url" name="source_url" type="text" placeholder="https://example.com/interview-guide" required>
-
-                <label for="scrape_topic">Topic</label>
-                <input id="scrape_topic" name="scrape_topic" type="text" placeholder="Resume, interviews, cover letters...">
-
-                <label class="checkbox-row" for="scrape_is_active">
-                    <input id="scrape_is_active" name="scrape_is_active" type="checkbox" checked>
-                    Include scraped page in the active dataset
-                </label>
-
-                <p class="helper-text">Use a public article, guide, or other readable webpage.</p>
-
-                <div class="form-actions">
-                    <button type="submit">Scrape URL</button>
-                </div>
-            </form>
-        </section>
-
-        <section class="developer-panel">
-            <p class="panel-kicker">Manual Entry</p>
-            <h2>{% if editing_document %}Edit Knowledge Document{% else %}Add Knowledge Document{% endif %}</h2>
-            <form method="post" class="developer-form">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="save_document">
-                {% if editing_document %}
-                    <input type="hidden" name="document_id" value="{{ editing_document.id }}">
+    <section class="overview-grid">
+        <article class="overview-card">
+            <span class="metric-label">Knowledge Docs</span>
+            <strong>{{ document_total }}</strong>
+            <p>{{ active_document_total }} active and ready for indexing.</p>
+        </article>
+        <article class="overview-card">
+            <span class="metric-label">Accuracy Tests</span>
+            <strong>{{ test_case_total }}</strong>
+            <p>{{ active_test_case_total }} active checks in the suite.</p>
+        </article>
+        <article class="overview-card">
+            <span class="metric-label">Latest Run</span>
+            <strong>
+                {% if latest_test_run %}
+                    {{ latest_test_run.passed_cases }}/{{ latest_test_run.total_cases }}
+                {% else %}
+                    --
                 {% endif %}
+            </strong>
+            <p>
+                {% if latest_test_run %}
+                    Passed on run {{ latest_test_run.id }}.
+                {% else %}
+                    No suite run yet.
+                {% endif %}
+            </p>
+        </article>
+        <article class="overview-card">
+            <span class="metric-label">Avg Run Latency</span>
+            <strong>
+                {% if latest_test_run %}
+                    {{ latest_test_run.average_latency_ms|floatformat:2 }} ms
+                {% else %}
+                    --
+                {% endif %}
+            </strong>
+            <p>Latest measured average across the saved suite.</p>
+        </article>
+    </section>
 
-                <label for="title">Title</label>
-                <input id="title" name="title" type="text" value="{% if editing_document %}{{ editing_document.title }}{% endif %}" required>
-
-                <label for="source_label">Source Label</label>
-                <input id="source_label" name="source_label" type="text" value="{% if editing_document %}{{ editing_document.source_label }}{% endif %}" required>
-
-                <label for="topic">Topic</label>
-                <input id="topic" name="topic" type="text" value="{% if editing_document %}{{ editing_document.topic }}{% endif %}" placeholder="Resume, interviews, cover letters...">
-
-                <label for="content">Knowledge Content</label>
-                <textarea id="content" name="content" rows="10" required>{% if editing_document %}{{ editing_document.content }}{% endif %}</textarea>
-                <p class="helper-text">Form changes are not saved until you click Save.</p>
-
-                <label class="checkbox-row" for="is_active">
-                    <input
-                        id="is_active"
-                        name="is_active"
-                        type="checkbox"
-                        {% if editing_document %}
-                            {% if editing_document.is_active %}checked{% endif %}
-                        {% else %}
-                            checked
-                        {% endif %}
-                    >
-                    Include this document in the active dataset
-                </label>
-
-                <div class="form-actions">
-                    <button type="submit">{% if editing_document %}Save Changes{% else %}Save Document{% endif %}</button>
-                    {% if editing_document %}
-                        <a class="button secondary-button" href="/developer/">Cancel</a>
-                    {% endif %}
-                </div>
-            </form>
-        </section>
-
-        <section class="developer-panel">
-            <div class="documents-header">
-                <div>
-                    <p class="panel-kicker">Dataset</p>
-                    <h2>Current Knowledge Documents</h2>
-                </div>
-                <span class="document-count">{{ documents.paginator.count }} document{{ documents.paginator.count|pluralize }}</span>
-            </div>
-            {% if documents.object_list %}
-                <div class="document-list">
-                    {% for document in documents.object_list %}
-                        <article class="document-card">
-                            <div class="document-card-header">
-                                <div>
-                                    <h3>{{ document.title }}</h3>
-                                    <p class="document-meta">
-                                        Source: {{ document.source_label }}
-                                        {% if document.topic %} | Topic: {{ document.topic }}{% endif %}
-                                    </p>
-                                </div>
-                                <span class="status-pill {% if document.is_active %}status-active{% else %}status-inactive{% endif %}">
-                                    {% if document.is_active %}Active{% else %}Inactive{% endif %}
-                                </span>
-                            </div>
-
-                            <p class="document-preview">{{ document.content_preview }}</p>
-                            <p class="document-meta">Last updated: {{ document.updated_at }}</p>
-
-                            <div class="form-actions">
-                                <form method="post">
-                                    {% csrf_token %}
-                                    <input type="hidden" name="action" value="toggle_document_status">
-                                    <input type="hidden" name="document_id" value="{{ document.id }}">
-                                    <button type="submit" class="{% if document.is_active %}secondary-button{% else %}activate-button{% endif %}">
-                                        {% if document.is_active %}Deactivate{% else %}Activate{% endif %}
-                                    </button>
-                                </form>
-                                <a class="button secondary-button" href="/developer/?edit={{ document.id }}">Edit</a>
-                                <form method="post">
-                                    {% csrf_token %}
-                                    <input type="hidden" name="action" value="delete_document">
-                                    <input type="hidden" name="document_id" value="{{ document.id }}">
-                                    <button type="submit" class="danger-button">Delete</button>
-                                </form>
-                            </div>
-                        </article>
-                    {% endfor %}
-                </div>
-
-                {% if documents.has_other_pages %}
-                    <div class="pagination">
-                        {% if documents.has_previous %}
-                            <a class="button secondary-button" href="?page={{ documents.previous_page_number }}">Previous</a>
-                        {% endif %}
-                        <span>Page {{ documents.number }} of {{ documents.paginator.num_pages }}</span>
-                        {% if documents.has_next %}
-                            <a class="button secondary-button" href="?page={{ documents.next_page_number }}">Next</a>
-                        {% endif %}
+    <div class="workspace-shell">
+        <aside class="control-rail">
+            <section class="rail-panel">
+                <div class="rail-panel-header">
+                    <div>
+                        <p class="panel-kicker">Controls</p>
+                        <h2>Manage Inputs</h2>
                     </div>
-                {% endif %}
-            {% else %}
-                <p>No knowledge documents have been created yet. Add your first dataset entry to start replacing the mock content.</p>
-            {% endif %}
+                </div>
+
+                <details class="tool-panel" open>
+                    <summary>
+                        <span>Upload File</span>
+                        <span class="tool-meta">.txt, .md, .docx, .pdf</span>
+                    </summary>
+                    <form method="post" enctype="multipart/form-data" class="developer-form">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="upload_document">
+
+                        <label for="knowledge_file">Choose File</label>
+                        <input id="knowledge_file" name="knowledge_file" type="file" accept=".txt,.md,.docx,.pdf" required>
+
+                        <label for="upload_topic">Topic</label>
+                        <input id="upload_topic" name="upload_topic" type="text" placeholder="Resume, interviews, cover letters...">
+
+                        <label class="checkbox-row" for="upload_is_active">
+                            <input id="upload_is_active" name="upload_is_active" type="checkbox" checked>
+                            Include uploaded file in the active dataset
+                        </label>
+
+                        <p class="helper-text">Best for guides, notes, and curated content you want to keep verbatim.</p>
+
+                        <div class="form-actions">
+                            <button type="submit">Upload File</button>
+                        </div>
+                    </form>
+                </details>
+
+                <details class="tool-panel">
+                    <summary>
+                        <span>Scrape Page</span>
+                        <span class="tool-meta">Public URL</span>
+                    </summary>
+                    <form method="post" class="developer-form">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="scrape_document">
+
+                        <label for="source_url">Page URL</label>
+                        <input id="source_url" name="source_url" type="text" placeholder="https://example.com/interview-guide" required>
+
+                        <label for="scrape_topic">Topic</label>
+                        <input id="scrape_topic" name="scrape_topic" type="text" placeholder="Resume, interviews, cover letters...">
+
+                        <label class="checkbox-row" for="scrape_is_active">
+                            <input id="scrape_is_active" name="scrape_is_active" type="checkbox" checked>
+                            Include scraped page in the active dataset
+                        </label>
+
+                        <p class="helper-text">Good for pulling in public articles and keeping the dataset current.</p>
+
+                        <div class="form-actions">
+                            <button type="submit">Scrape URL</button>
+                        </div>
+                    </form>
+                </details>
+
+                <details class="tool-panel" {% if editing_document %}open{% endif %}>
+                    <summary>
+                        <span>{% if editing_document %}Edit Document{% else %}Manual Document{% endif %}</span>
+                        <span class="tool-meta">Direct entry</span>
+                    </summary>
+                    <form method="post" class="developer-form">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="save_document">
+                        {% if editing_document %}
+                            <input type="hidden" name="document_id" value="{{ editing_document.id }}">
+                        {% endif %}
+
+                        <label for="title">Title</label>
+                        <input id="title" name="title" type="text" value="{% if editing_document %}{{ editing_document.title }}{% endif %}" required>
+
+                        <label for="source_label">Source Label</label>
+                        <input id="source_label" name="source_label" type="text" value="{% if editing_document %}{{ editing_document.source_label }}{% endif %}" required>
+
+                        <label for="topic">Topic</label>
+                        <input id="topic" name="topic" type="text" value="{% if editing_document %}{{ editing_document.topic }}{% endif %}" placeholder="Resume, interviews, cover letters...">
+
+                        <label for="content">Knowledge Content</label>
+                        <textarea id="content" name="content" rows="9" required>{% if editing_document %}{{ editing_document.content }}{% endif %}</textarea>
+
+                        <label class="checkbox-row" for="is_active">
+                            <input
+                                id="is_active"
+                                name="is_active"
+                                type="checkbox"
+                                {% if editing_document %}
+                                    {% if editing_document.is_active %}checked{% endif %}
+                                {% else %}
+                                    checked
+                                {% endif %}
+                            >
+                            Include this document in the active dataset
+                        </label>
+
+                        <div class="form-actions">
+                            <button type="submit">{% if editing_document %}Save Changes{% else %}Save Document{% endif %}</button>
+                            {% if editing_document %}
+                                <a class="button secondary-button" href="/developer/">Cancel</a>
+                            {% endif %}
+                        </div>
+                    </form>
+                </details>
+
+                <details class="tool-panel" {% if editing_test_case %}open{% endif %}>
+                    <summary>
+                        <span>{% if editing_test_case %}Edit Accuracy Test{% else %}New Accuracy Test{% endif %}</span>
+                        <span class="tool-meta">Saved tests</span>
+                    </summary>
+                    <form method="post" class="developer-form">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="save_test_case">
+                        {% if editing_test_case %}
+                            <input type="hidden" name="test_case_id" value="{{ editing_test_case.id }}">
+                        {% endif %}
+
+                        <label for="test_name">Test Name</label>
+                        <input id="test_name" name="test_name" type="text" value="{% if editing_test_case %}{{ editing_test_case.name }}{% endif %}" required>
+
+                        <label for="test_question">Question</label>
+                        <textarea id="test_question" name="test_question" rows="3" required>{% if editing_test_case %}{{ editing_test_case.question }}{% endif %}</textarea>
+
+                        <label for="expected_answer">Expected Answer Phrase</label>
+                        <textarea id="expected_answer" name="expected_answer" rows="2" placeholder="Optional keywords or phrase the answer should include">{% if editing_test_case %}{{ editing_test_case.expected_answer }}{% endif %}</textarea>
+                        <p class="helper-text">Use a phrase, comma-separated keywords, or line-by-line checks. Example: <code>situation, task, action, result</code></p>
+
+                        <label for="expected_source">Expected Source Label</label>
+                        <input id="expected_source" name="expected_source" type="text" value="{% if editing_test_case %}{{ editing_test_case.expected_source }}{% endif %}" placeholder="Optional source label the chatbot should cite">
+
+                        <label for="test_notes">Notes</label>
+                        <textarea id="test_notes" name="test_notes" rows="2" placeholder="Optional notes for reviewers">{% if editing_test_case %}{{ editing_test_case.notes }}{% endif %}</textarea>
+
+                        <label class="checkbox-row" for="test_is_active">
+                            <input
+                                id="test_is_active"
+                                name="test_is_active"
+                                type="checkbox"
+                                {% if editing_test_case %}
+                                    {% if editing_test_case.is_active %}checked{% endif %}
+                                {% else %}
+                                    checked
+                                {% endif %}
+                            >
+                            Include this test in the active suite
+                        </label>
+
+                        <div class="form-actions">
+                            <button type="submit">{% if editing_test_case %}Save Test Case{% else %}Create Test Case{% endif %}</button>
+                            {% if editing_test_case %}
+                                <a class="button secondary-button" href="/developer/">Cancel</a>
+                            {% endif %}
+                        </div>
+                    </form>
+                </details>
+            </section>
+        </aside>
+
+        <section class="workspace-main">
+            <div class="workspace-content-grid">
+                <section class="developer-panel content-panel">
+                    <div class="documents-header">
+                        <div>
+                            <p class="panel-kicker">Dataset Library</p>
+                            <h2>Knowledge Documents</h2>
+                        </div>
+                        <span class="document-count">{{ documents.paginator.count }} document{{ documents.paginator.count|pluralize }}</span>
+                    </div>
+                    <p class="section-description">Your full document library lives here in a bounded panel, so it can grow without pushing the rest of the workspace off-screen.</p>
+
+                    {% if documents.object_list %}
+                        <div class="document-grid panel-scroll">
+                            {% for document in documents.object_list %}
+                                <article class="document-card">
+                                    <div class="document-card-header">
+                                        <div>
+                                            <h3>{{ document.title }}</h3>
+                                            <p class="document-meta">
+                                                Source: {{ document.source_label }}
+                                                {% if document.topic %} | Topic: {{ document.topic }}{% endif %}
+                                            </p>
+                                        </div>
+                                        <span class="status-pill {% if document.is_active %}status-active{% else %}status-inactive{% endif %}">
+                                            {% if document.is_active %}Active{% else %}Inactive{% endif %}
+                                        </span>
+                                    </div>
+
+                                    <p class="document-preview">{{ document.content_preview }}</p>
+                                    <p class="document-meta">Last updated: {{ document.updated_at }}</p>
+
+                                    <div class="form-actions">
+                                        <form method="post">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="action" value="toggle_document_status">
+                                            <input type="hidden" name="document_id" value="{{ document.id }}">
+                                            <button type="submit" class="{% if document.is_active %}secondary-button{% else %}activate-button{% endif %}">
+                                                {% if document.is_active %}Deactivate{% else %}Activate{% endif %}
+                                            </button>
+                                        </form>
+                                        <a class="button secondary-button" href="/developer/?edit={{ document.id }}">Edit</a>
+                                        <form method="post">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="action" value="delete_document">
+                                            <input type="hidden" name="document_id" value="{{ document.id }}">
+                                            <button type="submit" class="danger-button">Delete</button>
+                                        </form>
+                                    </div>
+                                </article>
+                            {% endfor %}
+                        </div>
+
+                        {% if documents.has_other_pages %}
+                            <div class="pagination">
+                                {% if documents.has_previous %}
+                                    <a class="button secondary-button" href="?page={{ documents.previous_page_number }}">Previous</a>
+                                {% endif %}
+                                <span>Page {{ documents.number }} of {{ documents.paginator.num_pages }}</span>
+                                {% if documents.has_next %}
+                                    <a class="button secondary-button" href="?page={{ documents.next_page_number }}">Next</a>
+                                {% endif %}
+                            </div>
+                        {% endif %}
+                    {% else %}
+                        <p>No knowledge documents have been created yet. Add your first dataset entry to start replacing the mock content.</p>
+                    {% endif %}
+                </section>
+
+                <div class="workspace-side-stack">
+                    <section id="accuracy-report" class="developer-panel content-panel">
+                        <div class="documents-header">
+                            <div>
+                                <p class="panel-kicker">Latest Results</p>
+                                <h2>Accuracy Report</h2>
+                            </div>
+                            {% if latest_test_run %}
+                                <span class="document-count">Run {{ latest_test_run.id }}</span>
+                            {% endif %}
+                        </div>
+
+                        {% if latest_test_run %}
+                            <div class="metrics-grid report-metrics">
+                                <div class="metric-card">
+                                    <span class="metric-label">Passed</span>
+                                    <strong>{{ latest_test_run.passed_cases }}/{{ latest_test_run.total_cases }}</strong>
+                                </div>
+                                <div class="metric-card">
+                                    <span class="metric-label">Failed</span>
+                                    <strong>{{ latest_test_run.failed_cases }}</strong>
+                                </div>
+                                <div class="metric-card">
+                                    <span class="metric-label">Avg Latency</span>
+                                    <strong>{{ latest_test_run.average_latency_ms|floatformat:2 }} ms</strong>
+                                </div>
+                                <div class="metric-card">
+                                    <span class="metric-label">Completed</span>
+                                    <strong>{{ latest_test_run.completed_at|date:"M j, Y g:i A" }}</strong>
+                                </div>
+                            </div>
+
+                            {% if selected_result %}
+                                <div class="result-detail-card">
+                                    <div class="documents-header">
+                                        <div>
+                                            <p class="panel-kicker">Selected Result</p>
+                                            <h3>{{ selected_result.test_case.name }}</h3>
+                                        </div>
+                                        <span class="status-pill {% if selected_result.passed %}status-active{% else %}status-failed{% endif %}">
+                                            {% if selected_result.passed %}Pass{% else %}Fail{% endif %}
+                                        </span>
+                                    </div>
+                                    <details class="conversation-detail">
+                                        <summary>View Full Result</summary>
+                                        <div class="result-detail-grid">
+                                            <div>
+                                                <span class="metric-label">Question</span>
+                                                <p class="detail-text">{{ selected_result.test_case.question }}</p>
+                                            </div>
+                                            <div>
+                                                <span class="metric-label">Latency</span>
+                                                <p class="detail-text">{{ selected_result.latency_ms|floatformat:2 }} ms</p>
+                                            </div>
+                                            <div>
+                                                <span class="metric-label">Answer Check</span>
+                                                <p class="detail-text">{% if selected_result.answer_match %}Match{% else %}No match{% endif %}</p>
+                                            </div>
+                                            <div>
+                                                <span class="metric-label">Source Check</span>
+                                                <p class="detail-text">{% if selected_result.source_match %}Match{% else %}No match{% endif %}</p>
+                                            </div>
+                                        </div>
+                                        <div class="detail-block">
+                                            <span class="metric-label">Returned Sources</span>
+                                            <p class="detail-text">{{ selected_result.returned_sources|default:"-" }}</p>
+                                        </div>
+                                        {% if selected_result.error_message %}
+                                            <div class="detail-block">
+                                                <span class="metric-label">Error</span>
+                                                <p class="detail-text detail-error">{{ selected_result.error_message }}</p>
+                                            </div>
+                                        {% endif %}
+                                        <div class="detail-block">
+                                            <span class="metric-label">Full Response</span>
+                                            <div class="detail-response">{{ selected_result.chatbot_answer|linebreaksbr }}</div>
+                                        </div>
+                                    </details>
+                                </div>
+                            {% endif %}
+
+                            <div class="results-table-wrap panel-scroll">
+                                <table class="results-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Test</th>
+                                            <th>Status</th>
+                                            <th>Latency</th>
+                                            <th>Answer</th>
+                                            <th>Source</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for result in latest_test_run.results.all %}
+                                            <tr class="{% if result.is_selected %}result-row-selected{% endif %}">
+                                                <td>
+                                                    <a class="result-row-link" href="/developer/?run={{ latest_test_run.id }}&result={{ result.id }}#accuracy-report">
+                                                        <strong>{{ result.test_case.name }}</strong>
+                                                        <div class="table-subtext">{{ result.test_case.question|truncatechars:70 }}</div>
+                                                    </a>
+                                                </td>
+                                                <td>
+                                                    <span class="status-pill {% if result.passed %}status-active{% else %}status-failed{% endif %}">
+                                                        {% if result.passed %}Pass{% else %}Fail{% endif %}
+                                                    </span>
+                                                </td>
+                                                <td>{{ result.latency_ms|floatformat:2 }} ms</td>
+                                                <td>{% if result.answer_match %}Match{% else %}No match{% endif %}</td>
+                                                <td>
+                                                    {% if result.source_match %}Match{% else %}No match{% endif %}
+                                                    <div class="table-subtext">{{ result.returned_sources|default:"-"|truncatechars:72 }}</div>
+                                                </td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {% if recent_test_runs %}
+                                <div class="run-history">
+                                    <h3>Recent Runs</h3>
+                                    <div class="run-history-list">
+                                        {% for run in recent_test_runs %}
+                                            <a class="run-history-item {% if run.is_selected %}run-history-item-active{% endif %}" href="/developer/?run={{ run.id }}#accuracy-report">
+                                                <strong>Run {{ run.id }}</strong>
+                                                <span>{{ run.started_at|date:"M j, Y g:i A" }}</span>
+                                                <span>{{ run.passed_cases }}/{{ run.total_cases }} passed</span>
+                                            </a>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                            {% endif %}
+                        {% else %}
+                            <p>No accuracy suite has been run yet. Create test cases and click <strong>Run Accuracy Tests</strong> to generate a report.</p>
+                        {% endif %}
+                    </section>
+
+                    <section class="developer-panel content-panel">
+                        <div class="documents-header">
+                            <div>
+                                <p class="panel-kicker">Saved Tests</p>
+                                <h2>Accuracy Test Cases</h2>
+                            </div>
+                            <span class="document-count">{{ test_cases|length }} saved test{{ test_cases|length|pluralize }}</span>
+                        </div>
+
+                        {% if test_cases %}
+                            <div class="test-case-grid panel-scroll">
+                                {% for test_case in test_cases %}
+                                    <article class="document-card">
+                                        <div class="document-card-header">
+                                            <div>
+                                                <h3>{{ test_case.name }}</h3>
+                                                <p class="document-meta">{{ test_case.question }}</p>
+                                            </div>
+                                            <span class="status-pill {% if test_case.is_active %}status-active{% else %}status-inactive{% endif %}">
+                                                {% if test_case.is_active %}Active{% else %}Inactive{% endif %}
+                                            </span>
+                                        </div>
+
+                                        {% if test_case.expected_answer %}
+                                            <p class="document-meta"><strong>Expected answer:</strong> {{ test_case.expected_answer }}</p>
+                                        {% endif %}
+                                        {% if test_case.expected_source %}
+                                            <p class="document-meta"><strong>Expected source:</strong> {{ test_case.expected_source }}</p>
+                                        {% endif %}
+                                        {% if test_case.notes %}
+                                            <p class="document-preview">{{ test_case.notes }}</p>
+                                        {% endif %}
+
+                                        <div class="form-actions">
+                                            <form method="post">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="action" value="toggle_test_case_status">
+                                                <input type="hidden" name="test_case_id" value="{{ test_case.id }}">
+                                                <button type="submit" class="{% if test_case.is_active %}secondary-button{% else %}activate-button{% endif %}">
+                                                    {% if test_case.is_active %}Deactivate{% else %}Activate{% endif %}
+                                                </button>
+                                            </form>
+                                            <a class="button secondary-button" href="/developer/?edit_test={{ test_case.id }}">Edit</a>
+                                            <form method="post">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="action" value="delete_test_case">
+                                                <input type="hidden" name="test_case_id" value="{{ test_case.id }}">
+                                                <button type="submit" class="danger-button">Delete</button>
+                                            </form>
+                                        </div>
+                                    </article>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <p>No accuracy tests have been created yet. Add known questions here, then run the suite to validate chatbot correctness.</p>
+                        {% endif %}
+                    </section>
+                </div>
+            </div>
         </section>
     </div>
 </div>
