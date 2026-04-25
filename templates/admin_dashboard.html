@@ -3,6 +3,38 @@
 {% block content %}
 <h1>Admin Performance Dashboard</h1>
 
+<div style="margin-bottom: 30px; padding: 20px; background-color: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+    <h2>Knowledge Base Controls</h2>
+    <p style="margin-bottom: 15px; color: #4b5563;">Manually clear or reload the chatbot's vector database to recover from outdated data.</p>
+    
+    {% if messages %}
+        <div style="margin-bottom: 15px;">
+            {% for message in messages %}
+                <div style="padding: 10px; background-color: #d1fae5; color: #065f46; border-radius: 5px; margin-bottom: 5px;">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <div style="display: flex; gap: 10px;">
+        <form method="POST">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="clear_kb">
+            <button type="submit" style="background-color: #dc2626; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
+                Clear Knowledge Base
+            </button>
+        </form>
+
+        <form method="POST">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="reload_kb">
+            <button type="submit" style="background-color: #2563eb; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
+                Reload Knowledge Base
+            </button>
+        </form>
+    </div>
+</div>
 <div>
     <p><strong>Total Requests:</strong> {{ stats.total_requests }}</p>
     <p><strong>Successful Requests:</strong> {{ stats.successes }}</p>

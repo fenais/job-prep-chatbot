@@ -32,7 +32,7 @@ from .models import (
     KnowledgeDocument,
     PerformanceLog,
 )
-from .rag import get_rag_response, stream_rag_response, sync_knowledge_documents
+from .rag import get_rag_response, stream_rag_response, sync_knowledge_documents, reset_collection
 
 logger = logging.getLogger(__name__)
 
@@ -746,6 +746,20 @@ def developer(request):
 
 @staff_member_required
 def admin_dashboard(request):
+    if request.method == "POST":
+        action = request.POST.get("action")
+        
+        if action == "clear_kb":
+            KnowledgeDocument.objects.all().delete()
+            reset_collection()
+            messages.success(request, "Knowledge base successfully cleared. The chatbot currently has no data.")
+            return redirect("admin_dashboard")
+            
+        elif action == "reload_kb":
+            chunk_count = sync_knowledge_documents()
+            messages.success(request, f"Knowledge base reloaded successfully with {chunk_count} chunk(s).")
+            return redirect("admin_dashboard")
+
     logs = PerformanceLog.objects.order_by("-timestamp")
     recent_logs = logs[:20]
 
