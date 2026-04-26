@@ -340,6 +340,120 @@
             width: 100%;
         }
     }
+
+        .jp-mode-switcher {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 14px;
+        flex-wrap: wrap;
+    }
+
+    .jp-mode-btn {
+        border: 1px solid #d1d5db;
+        background: #ffffff;
+        color: #1f2937;
+        border-radius: 999px;
+        padding: 10px 14px;
+        font-size: 0.9rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: 0.2s ease;
+    }
+
+    .jp-mode-btn:hover {
+        border-color: #1e3a8a;
+        color: #1e3a8a;
+    }
+
+    .jp-mode-btn-active {
+        background: #1e3a8a;
+        color: #ffffff;
+        border-color: #1e3a8a;
+    }
+
+    .jp-form-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .jp-form-stack input[type="text"],
+    .jp-form-stack textarea {
+        width: 100%;
+        border: 1px solid #d1d5db;
+        border-radius: 14px;
+        padding: 14px 16px;
+        font-size: 1rem;
+        outline: none;
+        background: #ffffff;
+        resize: vertical;
+        font-family: inherit;
+    }
+
+    .jp-form-stack input[type="text"]:focus,
+    .jp-form-stack textarea:focus {
+        border-color: #1e3a8a;
+        box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.12);
+    }
+
+    .jp-markdown {
+    line-height: 1.65;
+    font-size: 0.97rem;
+    }
+
+    .jp-markdown h1,
+    .jp-markdown h2,
+    .jp-markdown h3,
+    .jp-markdown h4 {
+        margin-top: 14px;
+        margin-bottom: 8px;
+        color: #111827;
+        line-height: 1.3;
+    }
+
+    .jp-markdown h1 {
+        font-size: 1.15rem;
+    }
+
+    .jp-markdown h2 {
+        font-size: 1.05rem;
+    }
+
+    .jp-markdown h3,
+    .jp-markdown h4 {
+        font-size: 0.98rem;
+    }
+
+    .jp-markdown p {
+        margin: 8px 0;
+    }
+
+    .jp-markdown ul,
+    .jp-markdown ol {
+        margin: 8px 0 10px 20px;
+        padding-left: 8px;
+    }
+
+    .jp-markdown li {
+        margin-bottom: 6px;
+    }
+
+    .jp-markdown strong {
+        color: #111827;
+    }
+
+    .jp-markdown hr {
+        margin: 14px 0;
+        border: none;
+        border-top: 1px solid #e5e7eb;
+    }
+
+    .jp-message-row.bot .jp-markdown h1,
+    .jp-message-row.bot .jp-markdown h2,
+    .jp-message-row.bot .jp-markdown h3,
+    .jp-message-row.bot .jp-markdown h4 {
+        color: #1f2937;
+    }
 </style>
 
 <div class="jp-chat-wrap">
@@ -365,7 +479,7 @@
                         <div class="jp-message-bubble">
                             <div class="jp-message-label">JobPrepChatbot</div>
                             {% load markdownify %}
-                            <div>{{ chat.bot|markdownify }}</div>
+                            <div class="jp-markdown">{{ chat.bot|markdownify }}</div>
                             
                             {% if chat.sources %}
                             <details class="jp-sources">
@@ -419,9 +533,36 @@
         <div class="jp-chat-bottom">
             <form method="POST" id="jp-chat-form">
                 {% csrf_token %}
-                <div class="jp-input-row">
-                    <input type="text" name="message" id="jp-chat-input" placeholder="Ask a question...">
-                    <button type="submit" class="jp-send-btn" id="jp-send-btn">Send</button>
+
+                <div class="jp-mode-switcher">
+                    <button type="button" class="jp-mode-btn jp-mode-btn-active" data-mode="chat">General Chat</button>
+                    <button type="button" class="jp-mode-btn" data-mode="resume_feedback">Resume Feedback</button>
+                    <button type="button" class="jp-mode-btn" data-mode="cover_letter">Cover Letter Draft</button>
+                </div>
+
+                <input type="hidden" name="mode" id="jp-mode-input" value="chat">
+
+                <div id="jp-chat-mode-fields">
+                    <div class="jp-input-row">
+                        <input type="text" name="message" id="jp-chat-input" placeholder="Ask a question...">
+                        <button type="submit" class="jp-send-btn" id="jp-send-btn">Send</button>
+                    </div>
+                </div>
+
+                <div id="jp-resume-feedback-fields" style="display: none;">
+                    <div class="jp-form-stack">
+                        <input type="text" name="target_role" id="jp-target-role-input" placeholder="Optional target role, e.g. Software Engineering Intern">
+                        <textarea name="resume_text" id="jp-resume-input" rows="10" placeholder="Paste your resume here..."></textarea>
+                        <button type="submit" class="jp-send-btn" id="jp-resume-feedback-btn">Get Resume Feedback</button>
+                    </div>
+                </div>
+
+                <div id="jp-cover-letter-fields" style="display: none;">
+                    <div class="jp-form-stack">
+                        <textarea name="resume_text_cover" id="jp-resume-cover-input" rows="8" placeholder="Paste your resume here..."></textarea>
+                        <textarea name="job_description" id="jp-job-description-input" rows="8" placeholder="Paste the job description here..."></textarea>
+                        <button type="submit" class="jp-send-btn" id="jp-cover-letter-btn">Generate Cover Letter</button>
+                    </div>
                 </div>
             </form>
 
@@ -440,6 +581,19 @@
     const clearForm = document.getElementById("jp-clear-form");
     const sendButton = document.getElementById("jp-send-btn");
     const clearButton = document.getElementById("jp-clear-btn");
+
+    const modeButtons = document.querySelectorAll(".jp-mode-btn");
+    const modeInput = document.getElementById("jp-mode-input");
+
+    const chatModeFields = document.getElementById("jp-chat-mode-fields");
+    const resumeFeedbackFields = document.getElementById("jp-resume-feedback-fields");
+    const coverLetterFields = document.getElementById("jp-cover-letter-fields");
+
+    const targetRoleInput = document.getElementById("jp-target-role-input");
+    const resumeInput = document.getElementById("jp-resume-input");
+    const resumeCoverInput = document.getElementById("jp-resume-cover-input");
+    const jobDescriptionInput = document.getElementById("jp-job-description-input");
+
     const csrfToken = document.querySelector("#jp-chat-form input[name='csrfmiddlewaretoken']")?.value;
     const typingIndicatorId = "jp-typing-indicator";
     let activeStreamBotContent = null;
@@ -586,14 +740,13 @@
         if (!chatBody) {
             return;
         }
-        const botContent = chat.bot_html || `<div style="white-space: pre-wrap;">${escapeHtml(chat.bot || "")}</div>`;
-        chatBody.insertAdjacentHTML(
+            const botContent = chat.bot_html || `<div class="jp-markdown" style="white-space: pre-wrap;">${escapeHtml(chat.bot || "")}</div>`;        chatBody.insertAdjacentHTML(
             "beforeend",
             `
                 <div class="jp-message-row bot">
                     <div class="jp-message-bubble">
                         <div class="jp-message-label">JobPrepChatbot</div>
-                        <div>${botContent}</div>
+                        <div class="jp-markdown">${botContent}</div>
                         ${renderSources(chat.sources)}
                     </div>
                 </div>
@@ -629,21 +782,96 @@
         }
     }
 
+    function setMode(mode) {
+    if (!modeInput) {
+        return;
+    }
+
+    modeInput.value = mode;
+
+    modeButtons.forEach((button) => {
+        const isActive = button.getAttribute("data-mode") === mode;
+        button.classList.toggle("jp-mode-btn-active", isActive);
+    });
+
+    if (chatModeFields) {
+        chatModeFields.style.display = mode === "chat" ? "block" : "none";
+    }
+
+    if (resumeFeedbackFields) {
+        resumeFeedbackFields.style.display = mode === "resume_feedback" ? "block" : "none";
+    }
+
+    if (coverLetterFields) {
+        coverLetterFields.style.display = mode === "cover_letter" ? "block" : "none";
+    }
+
+    if (mode === "chat" && chatInput) {
+        chatInput.focus();
+    }
+
+    if (mode === "resume_feedback" && resumeInput) {
+        resumeInput.focus();
+    }
+
+    if (mode === "cover_letter" && resumeCoverInput) {
+        resumeCoverInput.focus();
+    }
+}
+
     scrollChatToBottom();
 
     bindSuggestionButtons();
+
+        modeButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+            const selectedMode = button.getAttribute("data-mode");
+            setMode(selectedMode);
+        });
+    });
+
+setMode("chat");
 
     if (chatForm) {
         chatForm.addEventListener("submit", async (event) => {
             event.preventDefault();
 
+            const selectedMode = modeInput?.value || "chat";
             const message = chatInput?.value.trim() || "";
-            if (!message) {
-                return;
+            const targetRole = targetRoleInput?.value.trim() || "";
+            const resumeText = resumeInput?.value.trim() || "";
+            const resumeTextCover = resumeCoverInput?.value.trim() || "";
+            const jobDescription = jobDescriptionInput?.value.trim() || "";
+
+            let displayMessage = "";
+
+            if (selectedMode === "chat") {
+                if (!message) {
+                    return;
+                }
+                displayMessage = message;
             }
 
-            appendUserMessage(message);
-            if (chatInput) {
+            if (selectedMode === "resume_feedback") {
+                if (!resumeText) {
+                    return;
+                }
+                displayMessage = "Please review my resume";
+                if (targetRole) {
+                    displayMessage += ` for: ${targetRole}`;
+                }
+            }
+
+            if (selectedMode === "cover_letter") {
+                if (!resumeTextCover || !jobDescription) {
+                    return;
+                }
+                displayMessage = "Please generate a tailored cover letter draft";
+            }
+
+            appendUserMessage(displayMessage);
+
+            if (selectedMode === "chat" && chatInput) {
                 chatInput.value = "";
             }
             setPendingState(true);
@@ -656,9 +884,16 @@
                         "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
                         "X-Requested-With": "XMLHttpRequest",
                         "X-CSRFToken": csrfToken || "",
-                        "X-Chat-Stream": "true",
+                        "X-Chat-Stream": selectedMode === "chat" ? "true" : "false",
                     },
-                    body: new URLSearchParams({ message }),
+                    body: new URLSearchParams({
+                        mode: selectedMode,
+                        message,
+                        target_role: targetRole,
+                        resume_text: resumeText,
+                        resume_text_cover: resumeTextCover,
+                        job_description: jobDescription,
+                    }),
                 });
 
                 if (!response.ok) {
@@ -666,51 +901,71 @@
                 }
 
                 hideTypingIndicator();
-                activeStreamBotContent = createStreamingBotMessage();
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-                let buffer = "";
-                let streamedText = "";
 
-                while (true) {
-                    const { value, done } = await reader.read();
-                    if (done) {
-                        break;
-                    }
+                if (selectedMode === "chat") {
+                    activeStreamBotContent = createStreamingBotMessage();
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = "";
+                    let streamedText = "";
 
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split("\n");
-                    buffer = lines.pop() || "";
-
-                    for (const line of lines) {
-                        if (!line.trim()) {
-                            continue;
+                    while (true) {
+                        const { value, done } = await reader.read();
+                        if (done) {
+                            break;
                         }
-                        const eventData = JSON.parse(line);
-                        if (eventData.type === "token") {
-                            streamedText += eventData.text || "";
-                            if (activeStreamBotContent) {
-                                activeStreamBotContent.textContent = streamedText;
+
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split("\n");
+                        buffer = lines.pop() || "";
+
+                        for (const line of lines) {
+                            if (!line.trim()) {
+                                continue;
                             }
-                            scrollChatToBottom();
-                        }
-                        if (eventData.type === "done" || eventData.type === "error") {
-                            if (activeStreamBotContent) {
-                                const bubble = activeStreamBotContent.closest(".jp-message-bubble");
-                                if (bubble) {
-                                    bubble.innerHTML = `
-                                        <div class="jp-message-label">JobPrepChatbot</div>
-                                        <div>${eventData.bot_html || `<div style="white-space: pre-wrap;">${escapeHtml(eventData.answer || streamedText)}</div>`}</div>
-                                        ${renderSources(eventData.sources || [])}
-                                    `;
+
+                            const eventData = JSON.parse(line);
+
+                            if (eventData.type === "token") {
+                                streamedText += eventData.text || "";
+                                if (activeStreamBotContent) {
+                                    activeStreamBotContent.textContent = streamedText;
+                                }
+                                scrollChatToBottom();
+                            }
+
+                            if (eventData.type === "done" || eventData.type === "error") {
+                                if (activeStreamBotContent) {
+                                    const bubble = activeStreamBotContent.closest(".jp-message-bubble");
+                                    if (bubble) {
+                                        bubble.innerHTML = `
+                                            <div class="jp-message-label">JobPrepChatbot</div>
+                                            <div class="jp-markdown">${eventData.bot_html || `<div style="white-space: pre-wrap;">${escapeHtml(eventData.answer || streamedText)}</div>`}</div>
+                                            ${renderSources(eventData.sources || [])}
+                                        `;
+                                    }
                                 }
                             }
                         }
                     }
-                }
 
-                activeStreamBotContent = null;
-                setPendingState(false);
+                    activeStreamBotContent = null;
+                    setPendingState(false);
+                } else {
+                    const data = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(data.error || "Something went wrong.");
+                    }
+
+                    appendBotMessage({
+                        bot: data.chat?.bot || "Something went wrong.",
+                        bot_html: data.bot_html,
+                        sources: data.chat?.sources || [],
+                    });
+
+                    setPendingState(false);
+                }
             } catch (error) {
                 hideTypingIndicator();
                 if (activeStreamBotContent) {

@@ -8,6 +8,8 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 import zipfile
 from xml.etree import ElementTree
+import os
+from anthropic import Anthropic
 
 import certifi
 import time
@@ -366,6 +368,183 @@ def run_accuracy_tests():
     return test_run
 
 
+def get_resume_feedback(resume_text, target_role=""):
+    resume_text = (resume_text or "").strip()
+    target_role = (target_role or "").strip()
+
+    if not resume_text:
+        return {
+            "answer": "Please paste your resume so I can review it.",
+            "sources": [],
+        }
+
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        return {
+            "answer": "The Anthropic API key is missing, so I cannot generate resume feedback right now.",
+            "sources": [],
+        }
+
+    client = Anthropic(api_key=api_key)
+
+    role_text = target_role if target_role else "General Software Engineering role"
+
+    prompt = f"""
+    You are a professional resume reviewer.
+
+    Review the resume below for the target role.
+
+    Rules:
+    - Be specific to the resume
+    - Be concise
+    - Do not invent anything
+    - Use clean markdown
+    - Keep the response short and scannable
+    - Give exactly 2 strengths and 2 weaknesses for Clarity
+    - Give exactly 2 strengths and 2 weaknesses for Skills
+    - Keep Role Fit to exactly 2 sentences
+    - Give exactly 2 Suggested Improvements
+    - Put each point on its own bullet
+    - Do not add any introduction or conclusion outside the format below
+
+    Use this exact format:
+
+    ## Resume Review
+
+    **Target Role:** {role_text}
+
+    ### Clarity
+
+    **Strengths**
+    - ...
+    - ...
+
+    **Weaknesses**
+    - ...
+    - ...
+
+    ### Skills
+
+    **Strengths**
+    - ...
+    - ...
+
+    **Weaknesses**
+    - ...
+    - ...
+
+    ### Role Fit
+    - ...
+    - ...
+
+    ### Suggested Improvements
+    - ...
+    - ...
+
+    Resume:
+    {resume_text}
+    """
+
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=600,
+        temperature=0.2,
+        messages=[
+            {"role": "user", "content": prompt}
+        ],
+    )
+
+    answer = ""
+    for block in response.content:
+        if getattr(block, "type", None) == "text":
+            answer += block.text
+
+    answer = answer.strip()
+
+    if not answer:
+        answer = "I could not generate resume feedback right now. Please try again."
+
+    return {
+        "answer": answer,
+        "sources": ["Resume + Target Role"],
+    }
+
+def generate_cover_letter(resume_text, job_description):
+    resume_text = (resume_text or "").strip()
+    job_description = (job_description or "").strip()
+
+    if not resume_text:
+        return {
+            "answer": "Please paste your resume first so I can generate a cover letter draft.",
+            "sources": [],
+        }
+
+    if not job_description:
+        return {
+            "answer": "Please paste the job description so I can tailor the cover letter draft.",
+            "sources": [],
+        }
+
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        return {
+            "answer": "The Anthropic API key is missing, so I cannot generate a tailored cover letter right now.",
+            "sources": [],
+        }
+
+    client = Anthropic(api_key=api_key)
+
+    prompt = f"""
+You are a job application assistant.
+
+Write a tailored cover letter draft based on the candidate's resume and the job description below.
+
+Requirements:
+- Make the letter specific to the job
+- Use details from the resume
+- Highlight relevant skills and experience
+- Keep it professional and concise
+- Do not invent fake experience
+- Write in full paragraph form
+- Include:
+  1. Greeting
+  2. Opening paragraph
+  3. Body paragraph(s)
+  4. Closing paragraph
+  5. Sign-off with [Your Name]
+
+Resume:
+{resume_text}
+
+Job Description:
+{job_description}
+"""
+
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=700,
+        temperature=0.5,
+        messages=[
+            {"role": "user", "content": prompt}
+        ],
+    )
+
+    answer = ""
+    for block in response.content:
+        if getattr(block, "type", None) == "text":
+            answer += block.text
+
+    answer = answer.strip()
+
+    if not answer:
+        answer = "I could not generate a cover letter draft right now. Please try again."
+
+    return {
+        "answer": answer,
+        "sources": ["Resume + Job Description"],
+    }
+
+
 def home(request):
     return render(request, "home.html")
 
@@ -382,13 +561,21 @@ def chat(request):
     chat_history = request.session.get("chat_history", [])
 
     if request.method == "POST":
+        latest_chat = None
+
         if "clear_chat" in request.POST:
             request.session["chat_history"] = []
             if is_async_request(request):
                 return JsonResponse({"chat_history": [], "cleared": True})
             return render(request, "chat.html", {"chat_history": []})
 
+        mode = request.POST.get("mode", "chat").strip()
+
         user_message = request.POST.get("message", "").strip()
+        target_role = request.POST.get("target_role", "").strip()
+        resume_text = request.POST.get("resume_text", "").strip()
+        resume_text_cover = request.POST.get("resume_text_cover", "").strip()
+        job_description = request.POST.get("job_description", "").strip()
 
         if user_message and is_async_request(request) and wants_streaming_chat(request):
             def event_stream():
@@ -447,7 +634,93 @@ def chat(request):
 
             return StreamingHttpResponse(event_stream(), content_type="application/x-ndjson")
 
-        if user_message:
+        if mode == "resume_feedback" and resume_text:
+            start = time.perf_counter()
+            try:
+                feedback_data = get_resume_feedback(resume_text, target_role)
+                latency_ms = (time.perf_counter() - start) * 1000
+
+                PerformanceLog.objects.create(
+                    question="Resume feedback request",
+                    latency_ms=latency_ms,
+                    success=True,
+                    source_count=len(feedback_data.get("sources", [])),
+                )
+
+                display_user_message = "Please review my resume"
+                if target_role:
+                    display_user_message += f" for: {target_role}"
+
+                chat_history.append({
+                    "user": display_user_message,
+                    "bot": feedback_data["answer"],
+                    "sources": feedback_data["sources"],
+                })
+                request.session["chat_history"] = chat_history
+                latest_chat = chat_history[-1]
+
+            except Exception as e:
+                latency_ms = (time.perf_counter() - start) * 1000
+
+                PerformanceLog.objects.create(
+                    question="Resume feedback request",
+                    latency_ms=latency_ms,
+                    success=False,
+                    error_message=str(e),
+                )
+
+                print("RESUME FEEDBACK ERROR:", e)
+
+                chat_history.append({
+                    "user": "Please review my resume",
+                    "bot": f"Sorry, something went wrong while reviewing the resume. Error: {e}",
+                    "sources": [],
+                })
+                request.session["chat_history"] = chat_history
+                latest_chat = chat_history[-1]
+
+        elif mode == "cover_letter" and resume_text_cover and job_description:
+            start = time.perf_counter()
+            try:
+                cover_letter_data = generate_cover_letter(resume_text_cover, job_description)
+                latency_ms = (time.perf_counter() - start) * 1000
+
+                PerformanceLog.objects.create(
+                    question="Cover letter generation request",
+                    latency_ms=latency_ms,
+                    success=True,
+                    source_count=len(cover_letter_data.get("sources", [])),
+                )
+
+                chat_history.append({
+                    "user": "Please generate a tailored cover letter draft",
+                    "bot": cover_letter_data["answer"],
+                    "sources": cover_letter_data["sources"],
+                })
+                request.session["chat_history"] = chat_history
+                latest_chat = chat_history[-1]
+
+            except Exception as e:
+                latency_ms = (time.perf_counter() - start) * 1000
+
+                PerformanceLog.objects.create(
+                    question="Cover letter generation request",
+                    latency_ms=latency_ms,
+                    success=False,
+                    error_message=str(e),
+                )
+
+                print("COVER LETTER ERROR:", e)
+
+                chat_history.append({
+                    "user": "Please generate a tailored cover letter draft",
+                    "bot": "Sorry, something went wrong while generating the cover letter. Please try again.",
+                    "sources": [],
+                })
+                request.session["chat_history"] = chat_history
+                latest_chat = chat_history[-1]
+
+        elif mode == "chat" and user_message:
             start = time.perf_counter()
             try:
                 rag_data = get_rag_response(user_message)
@@ -465,6 +738,8 @@ def chat(request):
                     "bot": rag_data["answer"],
                     "sources": rag_data["sources"],
                 })
+                request.session["chat_history"] = chat_history
+                latest_chat = chat_history[-1]
 
             except Exception as e:
                 latency_ms = (time.perf_counter() - start) * 1000
@@ -481,19 +756,19 @@ def chat(request):
                     "bot": "Sorry, something went wrong. Please try again.",
                     "sources": [],
                 })
+                request.session["chat_history"] = chat_history
+                latest_chat = chat_history[-1]
 
-            request.session["chat_history"] = chat_history
-
-            if is_async_request(request):
+        if is_async_request(request):
+            if latest_chat:
                 return JsonResponse({
-                    "chat": chat_history[-1],
-                    "bot_html": str(markdownify(chat_history[-1]["bot"])),
-                    "bot_text": strip_tags(str(markdownify(chat_history[-1]["bot"]))),
+                    "chat": latest_chat,
+                    "bot_html": str(markdownify(latest_chat["bot"])),
+                    "bot_text": strip_tags(str(markdownify(latest_chat["bot"]))),
                     "chat_history": chat_history,
                     "cleared": False,
                 })
 
-        if is_async_request(request):
             return JsonResponse({"error": "Message cannot be empty."}, status=400)
 
     return render(request, "chat.html", {
@@ -543,7 +818,7 @@ def developer(request):
                     request,
                     f'Scraped "{document.title}" from URL. Click Re-sync Knowledge Base to update search.',
                 )
-            except Exception as exc:
+            except Exception:
                 logger.exception("Scraping failed for URL: %s", source_url)
                 messages.error(request, "Scraping failed. Try a public article or guide page.")
 
@@ -748,13 +1023,13 @@ def developer(request):
 def admin_dashboard(request):
     if request.method == "POST":
         action = request.POST.get("action")
-        
+
         if action == "clear_kb":
             KnowledgeDocument.objects.all().delete()
             reset_collection()
             messages.success(request, "Knowledge base successfully cleared. The chatbot currently has no data.")
             return redirect("admin_dashboard")
-            
+
         elif action == "reload_kb":
             chunk_count = sync_knowledge_documents()
             messages.success(request, f"Knowledge base reloaded successfully with {chunk_count} chunk(s).")
