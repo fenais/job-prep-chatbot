@@ -581,6 +581,7 @@ def chat(request):
             def event_stream():
                 accumulated_answer = []
                 final_sources = []
+                start = time.perf_counter()
 
                 try:
                     for event in stream_rag_response(user_message):
@@ -590,6 +591,13 @@ def chat(request):
                         elif event["type"] == "done":
                             final_sources = event.get("sources", [])
                             answer = event.get("answer", "".join(accumulated_answer))
+                            latency_ms = (time.perf_counter() - start) * 1000
+                            PerformanceLog.objects.create(
+                                question=user_message,
+                                latency_ms=latency_ms,
+                                success=True,
+                                source_count=len(final_sources),
+                            )
                             chat_history.append({
                                 "user": user_message,
                                 "bot": answer,
@@ -605,6 +613,14 @@ def chat(request):
                         elif event["type"] == "error":
                             final_sources = event.get("sources", [])
                             answer = event.get("answer", "Sorry, something went wrong. Please try again.")
+                            latency_ms = (time.perf_counter() - start) * 1000
+                            PerformanceLog.objects.create(
+                                question=user_message,
+                                latency_ms=latency_ms,
+                                success=False,
+                                error_message=answer,
+                                source_count=0,
+                            )
                             chat_history.append({
                                 "user": user_message,
                                 "bot": answer,
