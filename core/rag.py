@@ -15,6 +15,12 @@ db_path = os.path.join(settings.BASE_DIR, "chroma_db")
 chroma_client = chromadb.PersistentClient(path=db_path)
 model_cache_path = settings.BASE_DIR / "model_cache" / "chroma_onnx"
 embedding_function_instance = None
+anthropic_client_instance = None
+
+EVALUATION_N_RESULTS = 1
+CHAT_N_RESULTS = 3
+EVALUATION_MAX_TOKENS = 120
+CHAT_MAX_TOKENS = 1024
 
 
 class SimpleEmbeddingFunction:
@@ -67,6 +73,17 @@ def get_embedding_function():
         embedding_function_instance = SimpleEmbeddingFunction()
 
     return embedding_function_instance
+
+
+def get_anthropic_client():
+    global anthropic_client_instance
+
+    if anthropic_client_instance is None:
+        anthropic_client_instance = anthropic.Anthropic(
+            api_key=os.environ.get("ANTHROPIC_API_KEY")
+        )
+
+    return anthropic_client_instance
 
 
 NORMALIZATION_REPLACEMENTS = {
@@ -304,7 +321,7 @@ def build_evaluation_system_prompt(topic):
         "You are JobPrepChatbot, an expert career coach specialising in "
         f"job preparation{', specifically ' + topic if topic and topic.lower() != 'general job prep' else ''}. "
         "Answer only using the provided context. "
-        "Respond in 2 to 4 short sentences with no markdown, no bullets, and no extra framing. "
+        "Respond in 1 to 3 short sentences with no markdown, no bullets, and no extra framing. "
         "If the context does not contain enough information, say so clearly in one short sentence."
     )
 
@@ -321,6 +338,8 @@ def build_user_prompt(user_query, context_chunks, intent):
 def get_quick_response(user_query):
     message = user_query.lower().strip()
     words = re.findall(r"\b[\w']+\b", message)
+    normalized_message = re.sub(r"[^a-z0-9\s]", " ", message)
+    normalized_message = re.sub(r"\s+", " ", normalized_message).strip()
 
     if "hello" in words or "hi" in words or "hey" in words:
         return {"answer": "Hey! I can help with resumes, cover letters, interviews, internships, and general job prep.", "sources": []}
@@ -328,7 +347,7 @@ def get_quick_response(user_query):
         return {"answer": "I am doing well, thank you. I am ready to help with your job preparation questions.", "sources": []}
     if "bye" in words or "goodbye" in words:
         return {"answer": "Goodbye! Come back anytime if you want help with job prep.", "sources": []}
-    if "thanks" in words or "thank" in words:
+    if normalized_message in {"thanks", "thank you", "thankyou", "thx", "ty"}:
         return {"answer": "You're welcome! I'm happy to help.", "sources": []}
     if "what can you do" in message or "how can you help" in message or ("help" in words and len(words) <= 3):
         return {"answer": "I can answer questions about resumes, cover letters, interviews, internships, and general job preparation.", "sources": []}
@@ -343,18 +362,21 @@ def prepare_rag_response(user_query, evaluation_mode=False):
 
     active_collection = get_collection()
 
-    if collection_count(active_collection) == 0:
+    current_count = collection_count(active_collection)
+
+    if current_count == 0:
         sync_knowledge_documents()
         active_collection = get_collection()
+        current_count = collection_count(active_collection)
 
-    if collection_count(active_collection) == 0:
+    if current_count == 0:
         return {
             "kind": "ready",
             "answer": "The knowledge base is empty right now. A developer needs to add job prep documents before I can answer dataset-grounded questions.",
             "sources": []
         }
 
-    n_results = min(2, collection_count(active_collection)) if evaluation_mode else min(3, collection_count(active_collection))
+    n_results = min(EVALUATION_N_RESULTS, current_count) if evaluation_mode else min(CHAT_N_RESULTS, current_count)
     results = active_collection.query(
         query_texts=[normalize_text(user_query)],
         n_results=n_results
@@ -395,10 +417,10 @@ def get_rag_response(user_query, evaluation_mode=False):
         }
 
     try:
-        anthropic_client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+        anthropic_client = get_anthropic_client()
         response = anthropic_client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=220 if prepared["evaluation_mode"] else 1024,
+            max_tokens=EVALUATION_MAX_TOKENS if prepared["evaluation_mode"] else CHAT_MAX_TOKENS,
             temperature=0 if prepared["evaluation_mode"] else 1,
             system=prepared["system_prompt"],
             messages=[{"role": "user", "content": prepared["user_prompt"]}],
@@ -428,13 +450,13 @@ def stream_rag_response(user_query):
         }
         return
 
-    anthropic_client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+    anthropic_client = get_anthropic_client()
     chunks = []
 
     try:
         with anthropic_client.messages.stream(
             model="claude-haiku-4-5-20251001",
-            max_tokens=1024,
+            max_tokens=CHAT_MAX_TOKENS,
             system=prepared["system_prompt"],
             messages=[{"role": "user", "content": prepared["user_prompt"]}],
         ) as stream:

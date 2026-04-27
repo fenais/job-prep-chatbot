@@ -1,4 +1,5 @@
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import logging
 import re
@@ -298,59 +299,96 @@ def answer_matches_expected(expected_answer, chatbot_answer):
 
 
 def source_matches_expected(expected_source, returned_sources):
-    normalized_expected = normalize_accuracy_text(expected_source)
     normalized_sources = [normalize_accuracy_text(source) for source in returned_sources]
+    normalized_expected_values = [
+        normalize_accuracy_text(part)
+        for part in re.split(r"\s*\|\s*|\n+", expected_source or "")
+        if normalize_accuracy_text(part)
+    ]
 
-    if not normalized_expected:
+    if not normalized_expected_values:
         return True
 
     return any(
-        normalized_expected == source or normalized_expected in source
+        expected == source or expected in source
+        for expected in normalized_expected_values
         for source in normalized_sources
     )
+
+
+def evaluate_accuracy_test_case(test_case):
+    start = time.perf_counter()
+    error_message = ""
+    chatbot_answer = ""
+    returned_sources = []
+
+    try:
+        rag_data = get_rag_response(test_case.question, evaluation_mode=True)
+        chatbot_answer = rag_data.get("answer", "")
+        returned_sources = rag_data.get("sources", [])
+    except Exception as exc:
+        error_message = str(exc)
+
+    latency_ms = (time.perf_counter() - start) * 1000
+    answer_match = answer_matches_expected(test_case.expected_answer, chatbot_answer)
+    source_match = source_matches_expected(test_case.expected_source, returned_sources)
+    passed = not error_message and answer_match and source_match
+
+    return {
+        "test_case": test_case,
+        "chatbot_answer": chatbot_answer,
+        "returned_sources": returned_sources,
+        "answer_match": answer_match,
+        "source_match": source_match,
+        "passed": passed,
+        "latency_ms": latency_ms,
+        "error_message": error_message,
+    }
 
 
 def run_accuracy_tests():
     test_cases = list(AccuracyTestCase.objects.filter(is_active=True).order_by("name"))
     test_run = AccuracyTestRun.objects.create(status="running", total_cases=len(test_cases))
 
+    if not test_cases:
+        test_run.completed_at = timezone.now()
+        test_run.status = "completed"
+        test_run.save(update_fields=["completed_at", "status"])
+        return test_run
+
+    max_workers = min(
+        len(test_cases),
+        max(1, int(os.getenv("ACCURACY_TEST_MAX_WORKERS", "4"))),
+    )
+
+    completed_results = []
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(evaluate_accuracy_test_case, test_case) for test_case in test_cases]
+        for future in as_completed(futures):
+            completed_results.append(future.result())
+
+    result_rows = []
     total_latency = 0.0
     passed_cases = 0
 
-    for test_case in test_cases:
-        start = time.perf_counter()
-        error_message = ""
-        chatbot_answer = ""
-        returned_sources = []
-
-        try:
-            rag_data = get_rag_response(test_case.question, evaluation_mode=True)
-            chatbot_answer = rag_data.get("answer", "")
-            returned_sources = rag_data.get("sources", [])
-        except Exception as exc:
-            error_message = str(exc)
-
-        latency_ms = (time.perf_counter() - start) * 1000
-        total_latency += latency_ms
-
-        answer_match = answer_matches_expected(test_case.expected_answer, chatbot_answer)
-        source_match = source_matches_expected(test_case.expected_source, returned_sources)
-        passed = not error_message and answer_match and source_match
-
-        if passed:
+    for result in completed_results:
+        total_latency += result["latency_ms"]
+        if result["passed"]:
             passed_cases += 1
 
-        AccuracyTestResult.objects.create(
+        result_rows.append(AccuracyTestResult(
             run=test_run,
-            test_case=test_case,
-            chatbot_answer=chatbot_answer,
-            returned_sources=", ".join(returned_sources),
-            answer_match=answer_match,
-            source_match=source_match,
-            passed=passed,
-            latency_ms=latency_ms,
-            error_message=error_message,
-        )
+            test_case=result["test_case"],
+            chatbot_answer=result["chatbot_answer"],
+            returned_sources=", ".join(result["returned_sources"]),
+            answer_match=result["answer_match"],
+            source_match=result["source_match"],
+            passed=result["passed"],
+            latency_ms=result["latency_ms"],
+            error_message=result["error_message"],
+        ))
+
+    AccuracyTestResult.objects.bulk_create(result_rows)
 
     test_run.passed_cases = passed_cases
     test_run.failed_cases = len(test_cases) - passed_cases
