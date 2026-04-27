@@ -35,7 +35,8 @@
         </form>
     </div>
 </div>
-<div>
+
+<div style="margin-bottom: 30px;">
     <p><strong>Total Requests:</strong> {{ stats.total_requests }}</p>
     <p><strong>Successful Requests:</strong> {{ stats.successes }}</p>
     <p><strong>Failed Requests:</strong> {{ stats.failures }}</p>
@@ -44,34 +45,34 @@
 </div>
 
 <h2>Recent Logs</h2>
-<table>
+<table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
     <thead>
-        <tr>
-            <th>Timestamp</th>
-            <th>Question</th>
-            <th>Latency (ms)</th>
-            <th>Status</th>
-            <th>Error</th>
+        <tr style="background-color: #f3f4f6;">
+            <th style="padding: 12px 16px; text-align: left; border-bottom: 2px solid #e5e7eb; font-weight: 600;">Timestamp</th>
+            <th style="padding: 12px 16px; text-align: left; border-bottom: 2px solid #e5e7eb; font-weight: 600;">Question</th>
+            <th style="padding: 12px 16px; text-align: left; border-bottom: 2px solid #e5e7eb; font-weight: 600;">Latency (ms)</th>
+            <th style="padding: 12px 16px; text-align: left; border-bottom: 2px solid #e5e7eb; font-weight: 600;">Status</th>
+            <th style="padding: 12px 16px; text-align: left; border-bottom: 2px solid #e5e7eb; font-weight: 600;">Error</th>
         </tr>
     </thead>
     <tbody>
         {% for log in recent_logs %}
-        <tr>
-            <td>{{ log.timestamp }}</td>
-            <td>{{ log.question|truncatechars:60 }}</td>
-            <td>{{ log.latency_ms|floatformat:2 }}</td>
-            <td>
+        <tr style="border-bottom: 1px solid #e5e7eb;">
+            <td style="padding: 12px 16px; color: #6b7280; font-size: 0.9rem;">{{ log.timestamp }}</td>
+            <td style="padding: 12px 16px;">{{ log.question|truncatechars:60 }}</td>
+            <td style="padding: 12px 16px;">{{ log.latency_ms|floatformat:2 }}</td>
+            <td style="padding: 12px 16px;">
                 {% if log.success %}
-                    Success
+                    <span style="color: #065f46; background-color: #d1fae5; padding: 4px 10px; border-radius: 999px; font-size: 0.85rem; font-weight: 600;">Success</span>
                 {% else %}
-                    Failure
+                    <span style="color: #991b1b; background-color: #fee2e2; padding: 4px 10px; border-radius: 999px; font-size: 0.85rem; font-weight: 600;">Failure</span>
                 {% endif %}
             </td>
-            <td>{{ log.error_message|default:"-" }}</td>
+            <td style="padding: 12px 16px; color: #6b7280;">{{ log.error_message|default:"-" }}</td>
         </tr>
         {% empty %}
         <tr>
-            <td colspan="5">No logs yet.</td>
+            <td colspan="5" style="padding: 20px 16px; text-align: center; color: #6b7280;">No logs yet.</td>
         </tr>
         {% endfor %}
     </tbody>
