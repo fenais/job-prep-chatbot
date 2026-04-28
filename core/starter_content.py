@@ -89,7 +89,7 @@ STARTER_ACCURACY_TESTS = [
     {
         "name": "Resume Summary Essentials",
         "question": "What should a resume summary include for a software engineering candidate?",
-        "expected_answer": "skills, experience, role",
+        "expected_answer": "skills, experience|projects|internships, role|targeting",
         "expected_source": "resume_summary_guide | resume_strategy | career_center_resume_guide",
         "notes": "Checks that the answer highlights the core parts of the starter resume guide.",
         "is_active": True,

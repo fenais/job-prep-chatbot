@@ -120,6 +120,14 @@ class AccuracyMatcherTests(TestCase):
             )
         )
 
+    def test_answer_match_accepts_or_alternatives_with_pipe(self):
+        self.assertTrue(
+            answer_matches_expected(
+                "skills, experience|projects|internships, role|targeting",
+                "A good summary highlights technical skills, relevant projects, and the role you're targeting.",
+            )
+        )
+
     def test_answer_match_fails_when_any_required_keyword_is_missing(self):
         self.assertFalse(
             answer_matches_expected(

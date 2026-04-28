@@ -269,16 +269,26 @@ def parse_expected_answer_checks(expected_answer):
     checks = []
 
     for line in lines:
-        parts = [part.strip() for part in re.split(r"\s*\|\s*|\s*,\s*", line) if part.strip()]
-        normalized_parts = [normalize_accuracy_text(part) for part in parts if normalize_accuracy_text(part)]
-        if normalized_parts:
-            checks.append(normalized_parts)
+        required_parts = [part.strip() for part in re.split(r"\s*,\s*", line) if part.strip()]
+        normalized_required_parts = []
+
+        for part in required_parts:
+            alternatives = [
+                normalize_accuracy_text(option)
+                for option in re.split(r"\s*\|\s*", part)
+                if normalize_accuracy_text(option)
+            ]
+            if alternatives:
+                normalized_required_parts.append(alternatives)
+
+        if normalized_required_parts:
+            checks.append(normalized_required_parts)
 
     if checks:
         return checks
 
     normalized_value = normalize_accuracy_text(raw_value)
-    return [[normalized_value]] if normalized_value else []
+    return [[[normalized_value]]] if normalized_value else []
 
 
 def answer_matches_expected(expected_answer, chatbot_answer):
@@ -293,7 +303,7 @@ def answer_matches_expected(expected_answer, chatbot_answer):
         return bool(normalized_answer) and "api error" not in normalized_answer
 
     return all(
-        all(keyword in normalized_answer for keyword in check_group)
+        all(any(option in normalized_answer for option in required_options) for required_options in check_group)
         for check_group in expected_checks
     )
 
