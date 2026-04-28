@@ -207,11 +207,17 @@ class RagEvaluationSpeedTests(TestCase):
 class StarterContentTests(TestCase):
     def test_seeded_knowledge_documents_exist(self):
         expected_sources = {
+            "ats_resume_guide",
             "resume_strategy",
             "star_interview_guide",
             "technical_interview_guide",
             "cover_letter_guide",
+            "internship_search_guide",
+            "job_search_strategy",
+            "linkedin_profile_guide",
             "networking_follow_up",
+            "portfolio_github_guide",
+            "recruiter_outreach_guide",
             "salary_negotiation",
         }
 
@@ -226,12 +232,15 @@ class StarterContentTests(TestCase):
 
     def test_seeded_accuracy_test_cases_exist(self):
         expected_names = {
+            "ATS Resume Basics",
             "Resume Summary Essentials",
             "STAR Method Definition",
             "Technical Interview Structure",
             "Cover Letter Tone",
             "Interview Follow-Up Timing",
+            "Internship Search Basics",
             "Negotiation Preparation",
+            "Recruiter Outreach Tone",
         }
 
         existing_names = set(
