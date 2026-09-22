@@ -4,7 +4,7 @@ A retrieval-augmented generation (RAG) chatbot for job preparation. Ask about re
 
 Team project for **CS 2340 (Objects and Design) at Georgia Tech**, Spring 2026. It was deployed on Railway with Docker.
 
-![Chat interface](docs/screenshots/chat-empty.png)
+![Chatbot answering a resume question](docs/screenshots/chat-answer.png)
 
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![Django](https://img.shields.io/badge/Django-5.2-092E20?logo=django&logoColor=white)
@@ -47,8 +47,10 @@ User question ──► quick-reply check ──► classify intent ──► re
 
 ## Screenshots
 
-**Developer console:** knowledge base management and accuracy testing
-![Developer console](docs/screenshots/developer-console.png)
+| Grounded answer with cited sources | Developer console |
+|---|---|
+| ![Answer with sources](docs/screenshots/chat-sources.png) | ![Developer console](docs/screenshots/developer-console.png) |
+
 
 ## Tech stack
 
