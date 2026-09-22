@@ -77,8 +77,10 @@ Open http://127.0.0.1:8000/chat/. On first use the embedding model (~80 MB) down
 | URL | Page |
 |---|---|
 | `/chat/` | Chatbot |
-| `/developer/` | Knowledge base and accuracy testing console |
+| `/developer/` | Knowledge base and accuracy testing console (staff login) |
 | `/admin-dashboard/` | Performance dashboard (staff login) |
+
+To reach the staff pages locally, create an account with `python manage.py createsuperuser`.
 
 ## Team
 

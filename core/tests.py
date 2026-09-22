@@ -1,5 +1,6 @@
 from unittest.mock import patch
 
+from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
@@ -17,6 +18,14 @@ from .rag import (
 class AccuracyTestingFlowTests(TestCase):
     def setUp(self):
         AccuracyTestCase.objects.update(is_active=False)
+        staff = User.objects.create_user("staff", password="test-pass", is_staff=True)
+        self.client.force_login(staff)
+
+    def test_developer_page_requires_staff_login(self):
+        self.client.logout()
+        response = self.client.get(reverse("developer"))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/admin/login/", response["Location"])
 
     def test_run_accuracy_tests_saves_run_and_result(self):
         test_case = AccuracyTestCase.objects.create(

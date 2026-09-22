@@ -840,6 +840,7 @@ def chat(request):
     })
 
 
+@staff_member_required
 def developer(request):
     if request.method == "POST":
         action = request.POST.get("action")
