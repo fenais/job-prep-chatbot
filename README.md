@@ -1,106 +1,85 @@
 # JobPrepChatbot
 
-A RAG-based (Retrieval-Augmented Generation) job preparation chatbot built for CS 2340 at Georgia Tech.
-Users can ask natural language questions about resumes, cover letters, interviews, and internships,
-and receive answers grounded in a curated knowledge base powered by the Anthropic Claude API.
+A retrieval-augmented generation (RAG) chatbot for job preparation. Ask about resumes, cover letters, interviews or internships and get streamed answers grounded in a curated knowledge base, with sources cited. It also gives resume feedback and drafts cover letters from your resume plus a job description.
 
----
+Team project for **CS 2340 (Objects and Design) at Georgia Tech**, Spring 2026. It was deployed on Railway with Docker.
 
-## Tech Stack
+![Chat interface](docs/screenshots/chat-empty.png)
 
-- **Backend:** Django 5.2
-- **Vector Database:** ChromaDB (with ONNXMiniLM embeddings)
-- **LLM:** Anthropic Claude (via `anthropic` Python SDK)
-- **Frontend:** Django templates + custom CSS
-- **Deployment:** Docker / Gunicorn
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![Django](https://img.shields.io/badge/Django-5.2-092E20?logo=django&logoColor=white)
+![ChromaDB](https://img.shields.io/badge/Vector_DB-ChromaDB-FF6B35)
+![Claude](https://img.shields.io/badge/LLM-Anthropic_Claude-D97757?logo=anthropic&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Railway-2496ED?logo=docker&logoColor=white)
 
----
+## Features
 
-## Project Structure
+- **Grounded Q&A:** questions are embedded and matched against a ChromaDB vector store. The top chunks go to Claude with an intent-specific prompt, and the answer streams back token by token with its sources.
+- **Resume feedback** and **cover letter drafting** modes.
+- **Developer console:** grow the knowledge base by uploading `.txt`, `.md`, `.docx` or `.pdf` files, scraping a URL, importing from a JSON API or typing content in. Then re-index with one click.
+- **Accuracy test suite:** saved question / expected-answer / expected-source cases that can be re-run against the live pipeline to catch regressions.
+- **Admin performance dashboard:** request counts, success/failure rate, and average and max latency per chat request.
+
+## How the RAG pipeline works
 
 ```
-jobprepchatbot/       # Django project settings and URL config
-core/
-  models.py           # KnowledgeDocument model
-  views.py            # Page views and document ingestion logic
-  rag.py              # RAG pipeline: preprocessing, retrieval, prompt construction, LLM call
-  urls.py             # App URL routes
-templates/            # HTML templates (base, chat, developer, admin)
-static/               # CSS styles
+Knowledge documents ──► preprocess ──► chunk (500 chars, 100 overlap) ──► dedupe ──► embed (MiniLM, ONNX) ──► ChromaDB
+                        clean HTML,
+                        strip boilerplate
+
+User question ──► quick-reply check ──► classify intent ──► retrieve top-k chunks ──► build intent-specific prompt ──► Claude (streamed) ──► answer + sources
 ```
 
----
+## My contributions
 
-## Local Setup
+- **Data preprocessing pipeline (user story 7):** runs before anything is embedded.
+  - `clean_html` strips scripts, styles and tags, and unescapes entities
+  - `remove_boilerplate` drops nav, cookie and footer lines with a regex rule set
+  - whitespace normalization
+  - `deduplicate_chunks` drops near-duplicate chunks (≥80% character overlap)
+- **Dynamic prompt construction (user story 8):**
+  - `classify_intent` sorts each question into factual lookup, explanation, how-to, review/feedback, creative or general
+  - `build_system_prompt` / `build_user_prompt` tailor the instructions and the retrieved context to that intent and topic
+- **Deployment:**
+  - containerized the app with Docker (collectstatic, migrations and content seeding at build time, Gunicorn)
+  - deployed it to Railway, fixing CSRF trusted origins and running migrations on deploy
+- **Observability:** added per-request performance logging to the streaming chat path, which feeds the admin latency dashboard.
 
-### 1. Clone the repo
+## Screenshots
+
+**Developer console:** knowledge base management and accuracy testing
+![Developer console](docs/screenshots/developer-console.png)
+
+## Tech stack
+
+| Layer | Tech |
+|---|---|
+| Backend | Django 5.2, Gunicorn, WhiteNoise |
+| Retrieval | ChromaDB (persistent) + all-MiniLM-L6-v2 embeddings (ONNX runtime) |
+| Generation | Anthropic Claude via the `anthropic` SDK (Haiku for chat, Sonnet for resume and cover-letter tasks) |
+| Ingestion | `pypdf`, `.docx` parsing, HTML scraping, JSON API import |
+| Deployment | Docker, Railway |
+
+## Run it locally
 
 ```bash
-git clone <your-repo-url>
-cd jobprepchatbot
-```
-
-### 2. Create and activate a virtual environment
-
-```bash
-python -m venv venv
-
-# Mac/Linux:
-source venv/bin/activate
-
-# Windows:
-venv\Scripts\activate
-```
-
-### 3. Install dependencies
-
-```bash
+git clone https://github.com/fenais/job-prep-chatbot.git
+cd job-prep-chatbot
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-```
-
-### 4. Set up your environment variables
-
-Create a file called `.env` in the project root (next to `manage.py`):
-
-```
-ANTHROPIC_API_KEY=(team key)
-```
-
-> **Never commit this file.** It is already listed in `.gitignore`.
-
-### 5. Run database migrations
-
-```bash
-python manage.py migrate
-```
-
-### 6. Start the development server
-
-```bash
+echo "ANTHROPIC_API_KEY=your-key-here" > .env       # never commit this file
+python manage.py migrate                            # also loads the starter knowledge base
 python manage.py runserver
 ```
 
-Then open [http://127.0.0.1:8000](http://127.0.0.1:8000) in your browser.
+Open http://127.0.0.1:8000/chat/. On first use the embedding model (~80 MB) downloads automatically. Run the tests with `python manage.py test`.
 
----
-
-## Pages
-
-| URL | Description |
+| URL | Page |
 |---|---|
-| `/` | Home page |
-| `/chat/` | End-user chatbot interface |
-| `/developer/` | Developer view — manage and ingest knowledge documents |
-| `/admin-dashboard/` | Administrator dashboard |
+| `/chat/` | Chatbot |
+| `/developer/` | Knowledge base and accuracy testing console |
+| `/admin-dashboard/` | Performance dashboard (staff login) |
 
----
+## Team
 
-## Adding Knowledge Documents
-
-Go to `/developer/` and use one of three methods:
-
-- **Upload a file** — supports `.txt`, `.md`, `.docx`, and simple `.pdf` files
-- **Scrape a URL** — paste any public webpage URL
-- **Manual entry** — type or paste content directly into the form
-
-After adding documents, click **Re-sync Knowledge Base** to rebuild the search index.
+Built with [@nahua3730](https://github.com/nahua3730), [@Janaalzahid](https://github.com/Janaalzahid), [@Ahelwa6](https://github.com/Ahelwa6) and [@natalieseng](https://github.com/natalieseng). The full commit history is preserved in this repo.
